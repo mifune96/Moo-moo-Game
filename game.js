@@ -437,6 +437,7 @@ function generateWave() {
                     lane: primaryLane,
                     y: vanishY - 15 + i * 25,
                     airborne: true, // collected when jumping!
+                    arcHeight: i === 0 ? 45 : 22, // rainbow jump curve!
                     collected: false,
                     sparkle: Math.random() * 6,
                 });
@@ -820,11 +821,19 @@ function update(dt) {
         c.y += gameSpeed * (0.28 + t * 1.6);
         c.sparkle += 0.12;
 
+        // Reset airborne once coins pass player so they settle naturally
+        if (c.airborne && c.y > player.y + 35) {
+            c.airborne = false;
+        }
+
         // Magnet attraction
         if (player.magnetActive && !c.collected) {
-            const cx = getLaneXAtY(c.lane, c.y);
+            const scale = getScaleAtY(c.y);
+            const airborneOffset = c.airborne ? (c.arcHeight || 36) * scale : 0;
+            const coinVisualY = c.y - airborneOffset;
+            const cx = getLaneXAtY(c.lane, coinVisualY);
             const dx = player.x - cx;
-            const dy = (player.y + player.jumpY) - c.y;
+            const dy = (player.y + player.jumpY) - coinVisualY;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist < 340) {
                 c.y += dy * 0.22;
@@ -833,7 +842,7 @@ function update(dt) {
             }
         }
     }
-    coins = coins.filter(c => c.y < h + 60 && !c.collected);
+    coins = coins.filter(c => c.y < h + 30 && !c.collected);
 
     // -- Move Power-ups --
     for (let p of powerups) {
@@ -841,7 +850,7 @@ function update(dt) {
         p.y += gameSpeed * (0.28 + t * 1.6);
         p.glow += 0.1;
     }
-    powerups = powerups.filter(p => p.y < h + 60 && !p.collected);
+    powerups = powerups.filter(p => p.y < h + 30 && !p.collected);
 
     // -- Particles Update --
     for (let p of particles) {
@@ -866,9 +875,10 @@ function update(dt) {
     // 1. COIN COLLECTION (Safe & Independent)
     for (let c of coins) {
         if (c.collected) continue;
-        const cx = getLaneXAtY(c.lane, c.y);
         const scale = getScaleAtY(c.y);
-        const coinVisualY = c.y - (c.airborne ? 65 * scale : 0);
+        const airborneOffset = c.airborne ? (c.arcHeight || 36) * scale : 0;
+        const coinVisualY = c.y - airborneOffset;
+        const cx = getLaneXAtY(c.lane, coinVisualY);
         const playerActualY = player.y + player.jumpY;
 
         // X proximity: player must be in the same lane
@@ -881,7 +891,7 @@ function update(dt) {
             heightMatch = false;
         }
 
-        if (xDist < 60 && yDist < 55 && heightMatch) {
+        if (xDist < 55 && yDist < 50 && heightMatch) {
             c.collected = true;
             coinsCollected++;
             sfxCoin();
@@ -2529,22 +2539,24 @@ function drawObstacle(o) {
     ctx.restore();
 }
 
-// 6. COINS (Milk Cents - Big, Radiant, 3D Rotating Golden Medallion)
+// 6. COINS (Milk Cents - Balanced Arcade Size, 3D Rotating Golden Medallion)
 function drawCoin(c) {
     const scale = getScaleAtY(c.y);
-    const laneW = getLaneWidthAtY(c.y);
-    const x = getLaneXAtY(c.lane, c.y);
-    const airborneOffset = c.airborne ? 65 * scale : 0;
+    const airborneOffset = c.airborne ? (c.arcHeight || 36) * scale : 0;
     const y = c.y - airborneOffset;
 
-    // Proportional coin radius: min 16px at far horizon, up to ~38px at Moo Moo's lane
-    const radius = Math.max(16, Math.min(38, laneW * 0.15));
+    // Use visual Y so the coin is ALWAYS perfectly centered in the lane at its visual position!
+    const x = getLaneXAtY(c.lane, y);
+    const laneW = getLaneWidthAtY(y);
+
+    // Balanced arcade coin radius: ~13px far horizon, ~24px at player lane (fits neatly inside lane)
+    const radius = Math.max(13, Math.min(24, laneW * 0.115));
 
     // 3D vertical spin effect (Subway Surfers / Crossy Road style)
     const spin = c.sparkle * 2.2;
     const cosSpin = Math.cos(spin);
     const isFront = cosSpin >= 0;
-    const spinWidthFactor = Math.max(0.38, Math.abs(cosSpin)); // keep at least 38% width for readability
+    const spinWidthFactor = Math.max(0.4, Math.abs(cosSpin)); // keep at least 40% width for legibility
     const coinW = radius * spinWidthFactor;
     const coinH = radius;
 
@@ -2552,20 +2564,27 @@ function drawCoin(c) {
     ctx.translate(x, y);
 
     // 1. Soft 3D Ground Shadow on Road
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
-    ctx.beginPath();
-    ctx.ellipse(0, airborneOffset + coinH * 0.65, radius * 0.9, radius * 0.26, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (c.airborne) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+        ctx.beginPath();
+        ctx.ellipse(0, airborneOffset + coinH * 0.4, radius * 0.75, radius * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        ctx.beginPath();
+        ctx.ellipse(0, coinH * 0.55, radius * 0.7, radius * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
-    // 2. Radiant Outer Golden Glow Halo (High visibility against dark asphalt/dirt)
+    // 2. Radiant Outer Golden Glow Ring (Tight 3px highlight, never bleeds outside lane)
     const haloGlow = 0.35 + Math.sin(c.sparkle * 3) * 0.15;
     ctx.fillStyle = `rgba(253, 224, 71, ${haloGlow})`;
     ctx.beginPath();
-    ctx.arc(0, 0, radius * 1.35, 0, Math.PI * 2);
+    ctx.arc(0, 0, radius + 3, 0, Math.PI * 2);
     ctx.fill();
 
     // 3. 3D Metal Edge / Rim Extrusion (Gives solid thickness when rotating)
-    const edgeOffset = (isFront ? 1 : -1) * Math.max(2, radius * 0.1);
+    const edgeOffset = (isFront ? 1 : -1) * Math.max(1.5, radius * 0.08);
     ctx.fillStyle = '#92400E'; // deep bronze amber edge
     ctx.beginPath();
     ctx.ellipse(edgeOffset, 0, coinW, coinH, 0, 0, Math.PI * 2);
@@ -2580,7 +2599,7 @@ function drawCoin(c) {
 
     ctx.fillStyle = coinGrad;
     ctx.strokeStyle = '#78350F';
-    ctx.lineWidth = Math.max(2.2, radius * 0.08);
+    ctx.lineWidth = Math.max(1.8, radius * 0.075);
     ctx.beginPath();
     ctx.ellipse(0, 0, coinW, coinH, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -2588,13 +2607,13 @@ function drawCoin(c) {
 
     // 5. Engraved Inner Bevel Ring
     ctx.strokeStyle = '#FDE047';
-    ctx.lineWidth = Math.max(1.5, radius * 0.05);
+    ctx.lineWidth = Math.max(1.2, radius * 0.045);
     ctx.beginPath();
     ctx.ellipse(0, 0, coinW * 0.76, coinH * 0.76, 0, 0, Math.PI * 2);
     ctx.stroke();
 
     // 6. Milk Cent Embossed Logo ('¢' symbol)
-    if (radius >= 14) {
+    if (radius >= 13) {
         const fontSize = Math.floor(radius * 1.05);
         ctx.font = `900 ${fontSize}px "Fredoka One", sans-serif`;
         ctx.textAlign = 'center';
@@ -2602,7 +2621,7 @@ function drawCoin(c) {
 
         // Drop shadow for stamped relief look
         ctx.fillStyle = '#78350F';
-        ctx.fillText('¢', 0.5, 1);
+        ctx.fillText('¢', 0.5, 0.8);
 
         // Highlight text
         ctx.fillStyle = '#FFFFFF';
@@ -2611,11 +2630,11 @@ function drawCoin(c) {
 
     // 7. Twinkling Specular Glint (Twinkles on the rim)
     const sparkleCycle = (c.sparkle * 1.5) % (Math.PI * 2);
-    if (sparkleCycle < 1.2) {
-        const glintAlpha = Math.sin((sparkleCycle / 1.2) * Math.PI);
-        const glintX = -coinW * 0.6;
-        const glintY = -coinH * 0.6;
-        const glintSize = radius * 0.35;
+    if (sparkleCycle < 1.0) {
+        const glintAlpha = Math.sin((sparkleCycle / 1.0) * Math.PI);
+        const glintX = -coinW * 0.55;
+        const glintY = -coinH * 0.55;
+        const glintSize = radius * 0.32;
 
         ctx.fillStyle = `rgba(255, 255, 255, ${glintAlpha})`;
         ctx.beginPath();
