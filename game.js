@@ -1429,16 +1429,29 @@ function drawHorizonScenery(w, h, vanishY, biome) {
             ctx.fillRect(cx, vanishY - 14 - Math.sin(i)*6, 3, 20);
         }
     } else {
-        // Highway overhead gantry
+        // Highway roadside billboard & scenery
         ctx.fillStyle = '#64748B';
-        ctx.fillRect(w * 0.18, vanishY - 50, 6, 50);
-        ctx.fillRect(w * 0.78, vanishY - 50, 6, 50);
-        ctx.fillRect(w * 0.18, vanishY - 50, w * 0.6, 8);
+        ctx.fillRect(w * 0.76, vanishY - 60, 6, 60);
         ctx.fillStyle = '#16A34A';
-        ctx.fillRect(w * 0.38, vanishY - 48, 100, 24);
+        ctx.fillRect(w * 0.70, vanishY - 62, 95, 36);
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2;
+        ctx.strokeRect(w * 0.70, vanishY - 62, 95, 36);
         ctx.fillStyle = '#FFF';
-        ctx.font = 'bold 9px sans-serif';
-        ctx.fillText('WILDLIFE SANCTUARY ➔', w * 0.43, vanishY - 33);
+        ctx.font = 'bold 9px "Fredoka One", sans-serif';
+        ctx.fillText('WILDLIFE SANCTUARY ➔', w * 0.71, vanishY - 45);
+        ctx.font = '8px sans-serif';
+        ctx.fillText('FREE COWS AHEAD 500M', w * 0.71, vanishY - 32);
+
+        // Distant city / sanctuary mountains
+        ctx.fillStyle = '#334155';
+        ctx.beginPath();
+        ctx.moveTo(0, vanishY);
+        ctx.lineTo(w * 0.15, vanishY - 45);
+        ctx.lineTo(w * 0.35, vanishY);
+        ctx.lineTo(w * 0.5, vanishY - 35);
+        ctx.lineTo(w * 0.65, vanishY);
+        ctx.closePath();
+        ctx.fill();
     }
 }
 
@@ -1885,48 +1898,288 @@ function drawKiki() {
     ctx.restore();
 }
 
-// 5. FARM HELICOPTER (Boss)
+// 5. FARM HELICOPTER (Boss) - High-Tech Farm Patrol Helicopter
 function drawHelicopter(w, vanishY) {
     const hx = helicopter.x;
-    const hy = vanishY - 55;
+    const hy = Math.max(70, vanishY - 70 + Math.sin(frameCount * 0.06) * 12);
+    const tilt = Math.max(-0.14, Math.min(0.14, (getLaneXAtY(player.lane, vanishY) - hx) * 0.002));
+    const rotorAngle = frameCount * 0.6;
+    const tailRotorAngle = frameCount * 0.8;
+    const isFlashingRed = (Math.floor(frameCount / 14) % 2 === 0);
 
     ctx.save();
-    // Searchlight Beam sweeping the road
-    const lightAngle = Math.sin(frameCount * 0.05) * 40;
-    ctx.fillStyle = 'rgba(255, 255, 200, 0.12)';
+    ctx.translate(hx, hy);
+    ctx.rotate(tilt);
+
+    // ===================================
+    // 1. MEGA SEARCHLIGHT (Volumetric Beam)
+    // ===================================
+    const beamTargetX = (getLaneXAtY(player.lane, H() * 0.72) - hx);
+    const lightGrad = ctx.createLinearGradient(0, 20, beamTargetX, H() * 0.65);
+    lightGrad.addColorStop(0, 'rgba(254, 240, 138, 0.55)');
+    lightGrad.addColorStop(0.3, 'rgba(253, 224, 71, 0.22)');
+    lightGrad.addColorStop(1, 'rgba(250, 204, 21, 0.01)');
+
+    ctx.fillStyle = lightGrad;
     ctx.beginPath();
-    ctx.moveTo(hx, hy + 15);
-    ctx.lineTo(hx - 80 + lightAngle, H());
-    ctx.lineTo(hx + 80 + lightAngle, H());
+    ctx.moveTo(-15, 20);
+    ctx.lineTo(beamTargetX - 75, H() * 0.65);
+    ctx.lineTo(beamTargetX + 75, H() * 0.65);
+    ctx.lineTo(15, 20);
     ctx.closePath();
     ctx.fill();
 
-    // Helicopter Body
-    ctx.fillStyle = '#1E293B';
-    ctx.beginPath(); ctx.ellipse(hx, hy, 36, 18, 0, 0, Math.PI * 2); ctx.fill();
-    // Glass Cockpit
-    ctx.fillStyle = '#38BDF8';
-    ctx.beginPath(); ctx.ellipse(hx - 12, hy - 2, 14, 10, 0, Math.PI, 0); ctx.fill();
-    // Tail boom
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(hx + 24, hy - 5, 34, 9);
-    ctx.fillRect(hx + 54, hy - 18, 6, 22);
-
-    // Spinning Rotor Blades
-    const rotor = frameCount * 0.45;
-    ctx.strokeStyle = '#94A3B8';
-    ctx.lineWidth = 3.5;
+    // Spotlight pool on the road
+    ctx.save();
+    ctx.fillStyle = 'rgba(254, 240, 138, 0.25)';
     ctx.beginPath();
-    ctx.moveTo(hx - Math.cos(rotor) * 48, hy - 20);
-    ctx.lineTo(hx + Math.cos(rotor) * 48, hy - 20);
+    ctx.ellipse(beamTargetX, H() * 0.65, 80, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // ===================================
+    // 2. LANDING SKIDS & STRUTS
+    // ===================================
+    ctx.strokeStyle = '#64748B'; // slate steel
+    ctx.lineWidth = 3.5;
+    // Front and rear struts
+    ctx.beginPath();
+    ctx.moveTo(-25, 12); ctx.lineTo(-32, 34);
+    ctx.moveTo(15, 12); ctx.lineTo(10, 34);
+    ctx.moveTo(-10, 12); ctx.lineTo(-14, 34);
+    ctx.moveTo(30, 12); ctx.lineTo(26, 34);
     ctx.stroke();
 
-    // Warning text
-    ctx.fillStyle = COLORS.barnRed;
+    // Tubular skids with curved tips
+    ctx.strokeStyle = '#94A3B8';
+    ctx.lineWidth = 4.5;
+    ctx.lineCap = 'round';
+    // Left skid
+    ctx.beginPath();
+    ctx.moveTo(-52, 30);
+    ctx.lineTo(-48, 34);
+    ctx.lineTo(40, 34);
+    ctx.stroke();
+    // Right skid (offset slightly for 3D depth)
+    ctx.beginPath();
+    ctx.moveTo(-45, 38);
+    ctx.lineTo(-40, 41);
+    ctx.lineTo(46, 41);
+    ctx.stroke();
+
+    // ===================================
+    // 3. TAIL BOOM & TAIL ROTOR
+    // ===================================
+    // Sleek aerodynamic tail boom
+    ctx.fillStyle = '#0F172A'; // deep navy
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(35, -4);
+    ctx.lineTo(95, -12);
+    ctx.lineTo(110, -28); // vertical fin top
+    ctx.lineTo(118, -26);
+    ctx.lineTo(105, 4);
+    ctx.lineTo(35, 10);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Yellow hazard stripe on tail
+    ctx.fillStyle = '#F59E0B';
+    ctx.beginPath();
+    ctx.moveTo(60, -7); ctx.lineTo(72, -9); ctx.lineTo(70, 7); ctx.lineTo(58, 8);
+    ctx.closePath(); ctx.fill();
+
+    // Horizontal stabilizer winglet
+    ctx.fillStyle = '#1E3A8A';
+    ctx.fillRect(80, -14, 18, 4);
+
+    // Spinning Tail Rotor
+    ctx.save();
+    ctx.translate(112, -22);
+    // Rotor hub
+    ctx.fillStyle = '#CBD5E1';
+    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+    // Spinning blur disc
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.4)';
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill();
+    // Tail rotor blades with red tips
+    ctx.rotate(tailRotorAngle);
+    ctx.strokeStyle = '#1E293B';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(16, 0); ctx.stroke();
+    ctx.fillStyle = '#EF4444';
+    ctx.fillRect(-16, -1.5, 4, 3);
+    ctx.fillRect(12, -1.5, 4, 3);
+    ctx.restore();
+
+    // ===================================
+    // 4. MAIN FUSELAGE / CABIN
+    // ===================================
+    // Heavy turbine engine cowling (top)
+    ctx.fillStyle = '#1E293B';
+    ctx.fillRect(-20, -24, 52, 14);
+    // Chrome exhaust pipes
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(26, -20, 10, 6);
+    ctx.fillStyle = '#334155';
+    ctx.beginPath(); ctx.arc(36, -17, 3, 0, Math.PI * 2); ctx.fill();
+
+    // Main Cabin Body
+    const cabinGrad = ctx.createLinearGradient(0, -20, 0, 22);
+    cabinGrad.addColorStop(0, '#1E3A8A'); // Police Royal Navy
+    cabinGrad.addColorStop(0.5, '#0F172A');
+    cabinGrad.addColorStop(1, '#020617');
+    ctx.fillStyle = cabinGrad;
+    ctx.strokeStyle = '#38BDF8';
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(-50, -4);
+    ctx.quadraticCurveTo(-45, -20, -10, -20);
+    ctx.lineTo(40, -18);
+    ctx.quadraticCurveTo(48, 0, 40, 16);
+    ctx.lineTo(-25, 18);
+    ctx.quadraticCurveTo(-55, 14, -50, -4);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Gold Police Badge Star & "POLICE" Decal
+    ctx.fillStyle = '#F59E0B';
+    ctx.fillRect(-15, 0, 48, 5); // gold side stripe
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 9px "Fredoka One", sans-serif';
+    ctx.fillText('FARM POLICE', 8, -4);
+
+    // ===================================
+    // 5. CANOPY (Cockpit Glass & Pilot)
+    // ===================================
+    const glassGrad = ctx.createLinearGradient(-48, -14, -15, 12);
+    glassGrad.addColorStop(0, 'rgba(56, 189, 248, 0.9)'); // bright cyan
+    glassGrad.addColorStop(0.6, 'rgba(14, 116, 144, 0.85)');
+    glassGrad.addColorStop(1, 'rgba(3, 105, 161, 0.95)');
+
+    ctx.fillStyle = glassGrad;
+    ctx.strokeStyle = '#E0F2FE';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-48, -4);
+    ctx.quadraticCurveTo(-44, -16, -20, -16);
+    ctx.lineTo(-12, -16);
+    ctx.lineTo(-12, 10);
+    ctx.quadraticCurveTo(-38, 12, -48, -4);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Windshield Gloss Glare Arc
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-44, -2);
+    ctx.quadraticCurveTo(-38, -12, -24, -12);
+    ctx.stroke();
+
+    // Pilot Silhouette inside cockpit (Headset & Shades)
+    ctx.fillStyle = '#0F172A';
+    ctx.beginPath(); ctx.arc(-24, -2, 6, 0, Math.PI * 2); ctx.fill(); // head
+    ctx.fillStyle = '#38BDF8';
+    ctx.fillRect(-27, -4, 5, 2); // sunglasses
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillRect(-28, -6, 2, 7); // headset earcups
+    ctx.fillRect(-20, -6, 2, 7);
+
+    // ===================================
+    // 6. NET LAUNCHER CANNON
+    // ===================================
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(-18, 14, 24, 7);
+    ctx.fillStyle = '#1E293B';
+    ctx.fillRect(-22, 15, 6, 5); // muzzle
+    // Laser sight targeting line
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(-22, 17);
+    ctx.lineTo(beamTargetX, H() * 0.65);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // ===================================
+    // 7. SIREN BEACON FLASHER (Red & Blue)
+    // ===================================
+    // Top beacon
+    ctx.fillStyle = isFlashingRed ? '#EF4444' : '#3B82F6';
+    ctx.beginPath(); ctx.arc(-5, -27, 4, 0, Math.PI * 2); ctx.fill();
+    // Flare glow
+    ctx.fillStyle = isFlashingRed ? 'rgba(239, 68, 68, 0.45)' : 'rgba(59, 130, 246, 0.45)';
+    ctx.beginPath(); ctx.arc(-5, -27, 10, 0, Math.PI * 2); ctx.fill();
+
+    // Belly beacon
+    ctx.fillStyle = !isFlashingRed ? '#EF4444' : '#3B82F6';
+    ctx.beginPath(); ctx.arc(10, 20, 3.5, 0, Math.PI * 2); ctx.fill();
+
+    // ===================================
+    // 8. MAIN ROTOR MAST & SPINNING DISCS
+    // ===================================
+    // Rotor Mast shaft
+    ctx.fillStyle = '#64748B';
+    ctx.fillRect(-6, -34, 8, 12);
+    // Swashplate disc
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(-12, -30, 20, 4);
+
+    // Rotor Hub
+    ctx.fillStyle = '#CBD5E1';
+    ctx.beginPath(); ctx.arc(-2, -34, 6, 0, Math.PI * 2); ctx.fill();
+
+    // Motion Blurred Rotor Disc
+    ctx.fillStyle = 'rgba(226, 232, 240, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(-2, -34, 78, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Twin Carbon Blades with Red & Yellow Tips
+    ctx.save();
+    ctx.translate(-2, -34);
+    ctx.rotate(rotorAngle);
+
+    // Blades
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(-76, -3, 152, 6);
+
+    // Yellow safety warning stripes on tips
+    ctx.fillStyle = '#F59E0B';
+    ctx.fillRect(-76, -3, 12, 6);
+    ctx.fillRect(64, -3, 12, 6);
+
+    // Red warning tip ends
+    ctx.fillStyle = '#EF4444';
+    ctx.fillRect(-76, -3, 4, 6);
+    ctx.fillRect(72, -3, 4, 6);
+    ctx.restore();
+
+    ctx.restore();
+
+    // ===================================
+    // 9. BOSS ENCOUNTER BANNER (Overhead)
+    // ===================================
+    ctx.save();
+    const bannerW = 270;
+    const bannerH = 32;
+    const bannerX = hx - bannerW / 2;
+    const bannerY = Math.max(16, hy - 65);
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.strokeStyle = isFlashingRed ? '#EF4444' : '#F59E0B';
+    ctx.lineWidth = 2.5;
+    drawBubbleRect(bannerX, bannerY, bannerW, bannerH, 8);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#FEF08A';
     ctx.font = 'bold 12px "Fredoka One", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🚁 FARM POLICE', hx, hy - 28);
-
+    ctx.fillText('🚨 BOSS: FARM PATROL HELICOPTER 🚁', hx, bannerY + 21);
     ctx.restore();
 }
 
