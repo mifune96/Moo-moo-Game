@@ -56,13 +56,7 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-## 👥 Credits
-Game Design Document by **MOO&co** team:
-- Asy Syifa Nazwa Latisya
-- Regatta Azalea Neera
-- Zulaika Syifa Tasmira
-- Khansa Nur Fatinah
-- Nadira Kencana Dewi
+
 
 Instructor: **Muhammad Rayhan, S.Kom**
 
