@@ -1075,11 +1075,11 @@ function update(dt) {
                 rover.y += gameSpeed * (0.4 + t * 1.8);
                 rover.x = getLaneXAtY(rover.lane, rover.y);
 
-                // Check collision with Moo Moo
+                // Check collision with Moo Moo (adjusted to Rover's bigger muscular size)
                 const yDist = Math.abs(player.y - rover.y);
                 const xDist = Math.abs(player.x - rover.x);
 
-                if (yDist < 25 && xDist < 40) {
+                if (yDist < 35 && xDist < 54) {
                     if (player.jumping && player.jumpY < -20) {
                         // Leaped over Rover!
                         spawnFlyingText("VAULTED ROVER! 🐶✨", player.x, player.y - 40, COLORS.strawYellow);
@@ -1758,66 +1758,169 @@ function drawFarmerJoe() {
     ctx.restore();
 }
 
-// 3. ROVER THE DOG - Herding Sheepdog
+// 3. ROVER THE DOG - Elite Farm Herding Dog (Big, Fierce & Agile)
 function drawRover() {
     const rx = rover.x;
     const ry = rover.y;
-    const scale = Math.max(0.4, getScaleAtY(ry) * 1.5);
-    const runCycle = Math.sin(frameCount * 0.4) * 6;
+    const laneW = getLaneWidthAtY(ry);
+    // Scale proportionally with lane width so Rover is big and clearly visible!
+    const scale = Math.max(0.65, (laneW / 180));
+    const runCycle = Math.sin(frameCount * 0.45) * 10;
+    const leapAngle = rover.leaping ? Math.sin(frameCount * 0.2) * 0.15 : 0;
 
     ctx.save();
     ctx.translate(rx, ry);
     ctx.scale(scale, scale);
+    ctx.rotate(leapAngle);
 
-    // Bark bubble
+    // Bark speech bubble
     if (rover.barkTimer > 0 && rover.barkText) {
         ctx.fillStyle = '#FFFFFF';
-        ctx.strokeStyle = '#18181B';
-        ctx.lineWidth = 2;
-        drawBubbleRect(-45, -55, 90, 24, 6);
+        ctx.strokeStyle = COLORS.barnRed;
+        ctx.lineWidth = 2.5;
+        drawBubbleRect(-65, -95, 130, 32, 10);
         ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#18181B';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.fillStyle = COLORS.barnRed;
+        ctx.font = 'bold 14px "Fredoka One", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(rover.barkText, 0, -39);
+        ctx.fillText(rover.barkText, 0, -74);
     }
 
     // Shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-    ctx.beginPath(); ctx.ellipse(0, 16, 20, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 28, 38, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Dog Body (Brown and White Border Collie)
-    ctx.fillStyle = '#78350F';
-    ctx.beginPath(); ctx.ellipse(0, 0, 20, 13, 0, 0, Math.PI * 2); ctx.fill();
-    // White chest
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath(); ctx.ellipse(6, 2, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
-
-    // Animated Running Legs
-    ctx.fillStyle = '#78350F';
-    ctx.fillRect(-14, 8, 5, 10 + runCycle);
-    ctx.fillRect(8, 8, 5, 10 - runCycle);
-
-    // Wagging Tail
-    const tailWag = Math.sin(frameCount * 0.5) * 8;
-    ctx.strokeStyle = '#78350F'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-28, -6 + tailWag); ctx.stroke();
-
-    // Dog Head
-    ctx.fillStyle = '#78350F';
-    ctx.beginPath(); ctx.arc(14, -10, 11, 0, Math.PI * 2); ctx.fill();
-    // White snout
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath(); ctx.ellipse(20, -7, 6, 4.5, 0, 0, Math.PI * 2); ctx.fill();
-    // Black nose
-    ctx.fillStyle = '#18181B';
-    ctx.beginPath(); ctx.arc(24, -8, 2.5, 0, Math.PI * 2); ctx.fill();
-    // Floppy Ear
+    // -- Dog Body (Muscular Border Collie / Australian Shepherd) --
+    // Chocolate brown & deep black coat
     ctx.fillStyle = '#451A03';
-    ctx.beginPath(); ctx.ellipse(10, -16, 5, 8, 0.3, 0, Math.PI * 2); ctx.fill();
-    // Red Collar
+    ctx.strokeStyle = '#18181B';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 36, 24, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // White fur patch / saddle patch
+    ctx.fillStyle = '#F8FAFC';
+    ctx.beginPath();
+    ctx.ellipse(10, 4, 16, 18, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fluffy white chest mane / ruff
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.ellipse(18, -2, 15, 16, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // -- 4 Muscular Running/Leaping Legs with Paws --
+    ctx.fillStyle = '#451A03';
+    ctx.strokeStyle = '#18181B';
+    ctx.lineWidth = 2;
+    // Front Legs
+    ctx.fillRect(8, 12, 9, 20 + runCycle);
+    ctx.strokeRect(8, 12, 9, 20 + runCycle);
+    ctx.fillRect(20, 12, 9, 20 - runCycle);
+    ctx.strokeRect(20, 12, 9, 20 - runCycle);
+    // Back Legs
+    ctx.fillRect(-26, 10, 10, 22 - runCycle);
+    ctx.strokeRect(-26, 10, 10, 22 - runCycle);
+    ctx.fillRect(-14, 10, 10, 22 + runCycle);
+    ctx.strokeRect(-14, 10, 10, 22 + runCycle);
+
+    // White Socks on Paws
+    ctx.fillStyle = '#F8FAFC';
+    ctx.fillRect(7, 26 + runCycle, 11, 8);
+    ctx.fillRect(19, 26 - runCycle, 11, 8);
+    ctx.fillRect(-27, 26 - runCycle, 12, 8);
+    ctx.fillRect(-15, 26 + runCycle, 12, 8);
+
+    // -- Big Bushy Tail with White Plume Tip --
+    const tailWag = Math.sin(frameCount * 0.45) * 14;
+    ctx.strokeStyle = '#451A03';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(-32, -4);
+    ctx.quadraticCurveTo(-48, -16 + tailWag, -56, -8 + tailWag);
+    ctx.stroke();
+    // White plume tip
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(-52, -10 + tailWag);
+    ctx.lineTo(-64, -6 + tailWag);
+    ctx.stroke();
+
+    // -- Dog Head & Neck --
+    ctx.fillStyle = '#451A03';
+    ctx.strokeStyle = '#18181B';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(26, -18, 18, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // White blaze stripe running up the snout & forehead
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.moveTo(22, -34);
+    ctx.lineTo(28, -34);
+    ctx.lineTo(34, -14);
+    ctx.lineTo(20, -14);
+    ctx.closePath();
+    ctx.fill();
+
+    // Snout / Muzzle
+    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = '#18181B';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(36, -14, 11, 8, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Glistening Black Nose
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath(); ctx.arc(43, -16, 4.5, 0, Math.PI * 2); ctx.fill();
+
+    // Open Happy/Fierce Mouth with Pink Lolling Tongue
+    ctx.fillStyle = '#BE123C'; // Mouth interior
+    ctx.beginPath(); ctx.ellipse(38, -8, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    // Pink Tongue
+    ctx.fillStyle = '#FB7185';
+    ctx.beginPath();
+    ctx.ellipse(39, -5 + Math.sin(frameCount * 0.3) * 2, 5, 6, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Expressive Cartoon Eyes
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.arc(26, -24, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath(); ctx.arc(27.5, -24, 2.5, 0, Math.PI * 2); ctx.fill();
+    // Eye shine
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.arc(26.5, -25.5, 1.2, 0, Math.PI * 2); ctx.fill();
+
+    // Perked Alert Ears
+    ctx.fillStyle = '#290E02';
+    ctx.strokeStyle = '#18181B';
+    ctx.lineWidth = 2;
+    // Left Ear
+    ctx.beginPath();
+    ctx.moveTo(18, -32); ctx.lineTo(14, -48); ctx.lineTo(28, -34);
+    ctx.fill(); ctx.stroke();
+    // Right Ear
+    ctx.beginPath();
+    ctx.moveTo(28, -34); ctx.lineTo(32, -49); ctx.lineTo(38, -30);
+    ctx.fill(); ctx.stroke();
+    // Pink inner ear
+    ctx.fillStyle = '#FBCFE8';
+    ctx.beginPath(); ctx.moveTo(20, -33); ctx.lineTo(16, -44); ctx.lineTo(26, -34); ctx.fill();
+
+    // Red Studded Collar with Golden Tag
     ctx.fillStyle = COLORS.barnRed;
-    ctx.fillRect(8, -4, 4, 8);
+    ctx.fillRect(16, -7, 7, 16);
+    // Golden bone tag
+    ctx.fillStyle = COLORS.cowbellGold;
+    ctx.beginPath(); ctx.arc(19, 10, 4, 0, Math.PI * 2); ctx.fill();
 
     ctx.restore();
 }
