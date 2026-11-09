@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Moo Moo - Milk, Moo, and Magic!</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- Main Menu Screen -->
+    <div id="mainMenu" class="screen active">
+        <div class="menu-content">
+            <div class="title-area">
+                <div class="cow-icon">🐄</div>
+                <h1>MOO MOO</h1>
+                <p class="subtitle">Milk, Moo, and Magic!</p>
+                <p class="tagline">Moo Your Way to Victory!</p>
+            </div>
+            <div class="high-score-display">
+                <span>🏆 Best: <span id="menuHighScore">0</span>m</span>
+            </div>
+            <button id="playBtn" class="btn btn-play">▶ PLAY</button>
+            <button id="shopBtn" class="btn btn-shop">🛒 SHOP</button>
+            <button id="dailyBtn" class="btn btn-daily">⭐ DAILY CHALLENGE</button>
+            <div class="coin-display-menu">
+                <span>🪙 <span id="menuCoins">0</span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shop Screen -->
+    <div id="shopScreen" class="screen">
+        <div class="shop-content">
+            <h2>🛒 MOO SHOP</h2>
+            <div class="shop-coins">🪙 <span id="shopCoins">0</span></div>
+            <div class="shop-grid" id="shopGrid"></div>
+            <button id="shopBackBtn" class="btn btn-back">← BACK</button>
+        </div>
+    </div>
+
+    <!-- HUD (in-game) -->
+    <div id="hud" class="screen">
+        <div class="hud-top">
+            <div class="hud-left">
+                <span class="hud-coins">🪙 <span id="hudCoins">0</span></span>
+            </div>
+            <div class="hud-center">
+                <span class="hud-distance" id="hudDistance">0m</span>
+            </div>
+            <div class="hud-right">
+                <div class="hud-powerup" id="hudPowerup" style="display:none;">
+                    <span id="powerupIcon">⚡</span>
+                    <div class="powerup-bar"><div class="powerup-fill" id="powerupFill"></div></div>
+                </div>
+                <button class="hud-pause" id="pauseBtn">⏸</button>
+            </div>
+        </div>
+        <div class="hud-shield" id="hudShield" style="display:none;">🛡️</div>
+        <!-- Kiki the Pigeon tips -->
+        <div class="kiki-tip" id="kikiTip" style="display:none;">
+            <span class="kiki-icon">🐦</span>
+            <span class="kiki-text" id="kikiText"></span>
+        </div>
+        <!-- Mobile controls -->
+        <div class="mobile-controls" id="mobileControls">
+            <div class="swipe-area" id="swipeArea"></div>
+        </div>
+    </div>
+
+    <!-- Pause Screen -->
+    <div id="pauseScreen" class="screen">
+        <div class="pause-content">
+            <h2>⏸ PAUSED</h2>
+            <button id="resumeBtn" class="btn btn-play">▶ RESUME</button>
+            <button id="restartBtn" class="btn btn-shop">🔄 RESTART</button>
+            <button id="pauseMenuBtn" class="btn btn-back">🏠 MAIN MENU</button>
+            <div class="sound-toggle">
+                <label>🔊 Sound: <input type="checkbox" id="soundToggle" checked></label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="screen">
+        <div class="gameover-content">
+            <h2 id="gameOverTitle">GAME OVER</h2>
+            <div class="gameover-cause" id="gameOverCause"></div>
+            <div class="gameover-stats">
+                <div class="stat">
+                    <span class="stat-label">Distance</span>
+                    <span class="stat-value" id="finalDistance">0m</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Coins</span>
+                    <span class="stat-value" id="finalCoins">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Score</span>
+                    <span class="stat-value" id="finalScore">0</span>
+                </div>
+            </div>
+            <div id="newHighScore" class="new-record" style="display:none;">🎉 NEW HIGH SCORE! 🎉</div>
+            <div class="gameover-badges" id="gameOverBadges"></div>
+            <button id="retryBtn" class="btn btn-play">🔄 TRY AGAIN</button>
+            <button id="gameOverMenuBtn" class="btn btn-back">🏠 MAIN MENU</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
+
