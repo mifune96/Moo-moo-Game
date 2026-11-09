@@ -1,7 +1,7 @@
 // ============================================
 // MOO MOO - Endless Runner Game
 // Based on Game Design Document by MOO&co
-// HTML5 Canvas + JavaScript
+// Informatics Grade 11 - Muhammad Rayhan, S.Kom
 // ============================================
 
 (function() {
@@ -22,15 +22,15 @@ resizeCanvas();
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
 
-// ---- Constants (from GDD) ----
+// ---- Constants from GDD ----
 const LANE_COUNT = 3;
-const BASE_SPEED = 5;
-const MAX_SPEED = 18;
+const BASE_SPEED = 6;
+const MAX_SPEED = 20;
 
 // Biome distance thresholds (meters)
-const BIOME_BARNYARD = 0;
-const BIOME_HARVEST = 500;
-const BIOME_HIGHWAY = 1500;
+const BIOME_BARNYARD = 0;       // Level 1: Barnyard Escape (0 - 500m)
+const BIOME_HARVEST = 500;      // Level 2: Harvest Fields (500 - 1500m)
+const BIOME_HIGHWAY = 1500;     // Level 3: Country Highway (1500m+)
 
 // Power-up durations (seconds)
 const TURBO_DURATION = 5;
@@ -43,68 +43,57 @@ const COLORS = {
     strawYellow: '#F9C846',
     skyBlue: '#4EC0E9',
     cowbellGold: '#E8A923',
-    road: '#8B7355',
+    road: '#A0875A',
     roadLine: '#F9C846',
     mud: '#6B4226',
-    asphalt: '#555555',
+    asphalt: '#444444',
 };
 
-// ===== PERSPECTIVE SYSTEM =====
-// The road converges to a vanish point at the top.
-// All objects use a normalized Y (0 = horizon, 1 = bottom of screen)
-// and are positioned/scaled according to perspective.
+// ---- Perspective Geometry ----
+const VANISH_Y_RATIO = 0.36;    // horizon line
+const PLAYER_Y_RATIO = 0.74;    // cow's running baseline
+const ROAD_BOTTOM_WIDTH = 0.78; // road covers 78% of screen at bottom
+const ROAD_TOP_WIDTH = 0.08;    // road width at horizon
 
-const VANISH_Y_RATIO = 0.38;    // vanish point Y as fraction of screen height
-const PLAYER_Y_RATIO = 0.75;    // player's Y position as fraction of screen height
-const ROAD_BOTTOM_WIDTH = 0.68; // road width at bottom as fraction of screen width
-const ROAD_TOP_WIDTH = 0.06;    // road width at vanish point
-
-// Get the perspective factor for a given screen Y position
-// Returns 0 at vanish point, 1 at screen bottom
 function getPerspectiveT(screenY) {
-    const h = H();
-    const vanishY = h * VANISH_Y_RATIO;
-    return Math.max(0, Math.min(1, (screenY - vanishY) / (h - vanishY)));
+    const vanishY = H() * VANISH_Y_RATIO;
+    return Math.max(0, Math.min(1, (screenY - vanishY) / (H() - vanishY)));
 }
 
-// Get the road center X (always screen center)
-function getRoadCenterX() { return W() / 2; }
+function getRoadCenterX() {
+    return W() / 2;
+}
 
-// Get the road half-width at a given screen Y
 function getRoadHalfWidth(screenY) {
     const t = getPerspectiveT(screenY);
-    const w = W();
-    const bottomHalf = w * ROAD_BOTTOM_WIDTH / 2;
-    const topHalf = w * ROAD_TOP_WIDTH / 2;
+    const bottomHalf = W() * ROAD_BOTTOM_WIDTH / 2;
+    const topHalf = W() * ROAD_TOP_WIDTH / 2;
     return topHalf + (bottomHalf - topHalf) * t;
 }
 
-// Get the X position of a lane center at a given screen Y
-// lane: 0 (left), 1 (center), 2 (right)
+function getLaneWidthAtY(screenY) {
+    return (getRoadHalfWidth(screenY) * 2) / LANE_COUNT;
+}
+
 function getLaneXAtY(lane, screenY) {
     const cx = getRoadCenterX();
     const halfW = getRoadHalfWidth(screenY);
-    const laneWidth = (halfW * 2) / 3;
-    return cx - halfW + laneWidth * lane + laneWidth / 2;
+    const laneW = (halfW * 2) / LANE_COUNT;
+    return cx - halfW + laneW * lane + laneW / 2;
 }
 
-// Get scale factor at a given screen Y (for sizing objects)
-function getScaleAtY(screenY) {
-    return Math.max(0.15, getPerspectiveT(screenY));
-}
-
-// Legacy helper — lane X at the player's Y
 function getLaneX(lane) {
     return getLaneXAtY(lane, H() * PLAYER_Y_RATIO);
 }
 
-// ---- Audio System ----
+// ---- Audio Synthesizer (Zero Dependencies) ----
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 let soundEnabled = true;
 
 function initAudio() {
     if (!audioCtx) audioCtx = new AudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
 function playTone(freq, duration, type = 'square', vol = 0.15) {
@@ -115,7 +104,7 @@ function playTone(freq, duration, type = 'square', vol = 0.15) {
         osc.type = type;
         osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
         gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
@@ -123,41 +112,84 @@ function playTone(freq, duration, type = 'square', vol = 0.15) {
     } catch(e) {}
 }
 
-function sfxCoin()    { playTone(880, 0.1, 'sine', 0.12); setTimeout(() => playTone(1100, 0.1, 'sine', 0.1), 50); }
-function sfxJump()    { playTone(300, 0.15, 'triangle', 0.1); playTone(500, 0.1, 'triangle', 0.08); }
-function sfxSlide()   { playTone(200, 0.12, 'sawtooth', 0.06); }
-function sfxCrash()   { playTone(100, 0.3, 'sawtooth', 0.2); playTone(80, 0.4, 'square', 0.15); }
-function sfxPowerup() { playTone(523, 0.1, 'sine', 0.15); setTimeout(() => playTone(659, 0.1, 'sine', 0.12), 80); setTimeout(() => playTone(784, 0.15, 'sine', 0.1), 160); }
-function sfxMoo()     { playTone(120, 0.5, 'sawtooth', 0.12); setTimeout(() => playTone(140, 0.4, 'sawtooth', 0.1), 200); }
-function sfxBark()    { playTone(400, 0.08, 'square', 0.1); setTimeout(() => playTone(500, 0.06, 'square', 0.08), 100); }
-function sfxClick()   { playTone(600, 0.05, 'sine', 0.1); }
+function sfxCoin() {
+    playTone(987, 0.08, 'sine', 0.14);
+    setTimeout(() => playTone(1318, 0.12, 'sine', 0.12), 40);
+}
+function sfxJump() {
+    if (!soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(650, audioCtx.currentTime + 0.18);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.18);
+    } catch(e) {}
+}
+function sfxSlide() {
+    playTone(180, 0.15, 'sawtooth', 0.08);
+}
+function sfxCrash() {
+    playTone(85, 0.4, 'sawtooth', 0.25);
+    setTimeout(() => playTone(55, 0.35, 'square', 0.2), 50);
+}
+function sfxPowerup() {
+    [440, 554, 659, 880].forEach((f, idx) => {
+        setTimeout(() => playTone(f, 0.12, 'sine', 0.15), idx * 60);
+    });
+}
+function sfxMoo() {
+    if (!soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(110, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(165, audioCtx.currentTime + 0.25);
+        osc.frequency.linearRampToValueAtTime(95, audioCtx.currentTime + 0.7);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.7);
+    } catch(e) {}
+}
+function sfxBark() {
+    playTone(420, 0.09, 'sawtooth', 0.12);
+    setTimeout(() => playTone(500, 0.08, 'sawtooth', 0.1), 100);
+}
+function sfxClick() {
+    playTone(700, 0.04, 'sine', 0.08);
+}
 
-// Background music
+// Country Banjo BGM
 let bgmInterval = null;
 function startBGM() {
     if (!soundEnabled || !audioCtx) return;
     stopBGM();
-    const notes = [262, 330, 392, 330, 294, 349, 330, 262, 294, 330, 262, 196];
-    let i = 0;
+    const melody = [262, 330, 392, 523, 392, 330, 294, 349, 440, 349, 262, 330];
+    let step = 0;
     bgmInterval = setInterval(() => {
-        playTone(notes[i % notes.length], 0.2, 'triangle', 0.04);
-        i++;
-    }, 250);
+        if (state === 'playing') {
+            const freq = melody[step % melody.length];
+            playTone(freq, 0.18, 'triangle', 0.035);
+            if (step % 2 === 0) playTone(130, 0.12, 'sine', 0.03); // bass thump
+            step++;
+        }
+    }, 220);
 }
 function stopBGM() {
     if (bgmInterval) { clearInterval(bgmInterval); bgmInterval = null; }
 }
 
-// ---- Game State ----
-let state = 'menu';
-let distance = 0;
-let score = 0;
-let coinsCollected = 0;
-let gameSpeed = BASE_SPEED;
-let frameCount = 0;
-let lastTime = 0;
-
-// Persistent data
+// ---- Persistent State ----
 let totalCoins = parseInt(localStorage.getItem('moomoo_coins') || '0');
 let highScore = parseInt(localStorage.getItem('moomoo_highscore') || '0');
 let ownedSkins = JSON.parse(localStorage.getItem('moomoo_skins') || '["default"]');
@@ -172,12 +204,23 @@ function saveData() {
     localStorage.setItem('moomoo_multiplier', scoreMultiplier);
 }
 
-// ---- Player (Moo Moo) ----
+// ---- Game State ----
+let state = 'menu'; // menu, playing, paused, gameover
+let distance = 0;
+let score = 0;
+let coinsCollected = 0;
+let gameSpeed = BASE_SPEED;
+let frameCount = 0;
+let lastTime = 0;
+
+// ---- Characters & Entities ----
+
+// 1. Moo Moo the Cow (Player)
 const player = {
     lane: 1,
     targetLane: 1,
-    x: 0, y: 0,
-    width: 50, height: 60,
+    x: 0,
+    y: 0,
     jumping: false,
     jumpY: 0,
     jumpVel: 0,
@@ -191,57 +234,70 @@ const player = {
     animFrame: 0,
     animTimer: 0,
     stumbleTimer: 0,
+    mooTimer: 0,
+    mooCooldown: 0,
 };
 
-// ---- Enemies ----
+// 2. Farmer Joe (The Pursuer - GDD 2.4)
 const farmerJoe = {
-    active: false,
-    closeness: 0,
+    active: true,
+    lane: 1,
+    x: 0,
+    y: 0,
+    closeness: 15,          // 0 (far) to 100 (catches player)
     throwTimer: 0,
-    netActive: false,
-    netLane: 1,
-    netY: 0,
+    throwing: false,
+    throwAnim: 0,
+    shoutText: '',
+    shoutTimer: 0,
+    stunnedTimer: 0,        // caused by Moo Moo's MOO
 };
 
+// 3. Rover the Dog (Elite Enemy - GDD 2.4)
 const rover = {
     active: false,
-    lane: -1,
+    lane: 1,
+    targetLane: 1,
+    x: 0,
     y: 0,
+    progressY: 0,
     warning: false,
     warningTimer: 0,
     leaping: false,
+    barkText: '',
+    barkTimer: 0,
+    stunnedTimer: 0,
 };
 
+// 4. Kiki the Pigeon (Supporting NPC Guide - GDD 2.5)
+const kiki = {
+    x: 0,
+    y: 0,
+    wingAngle: 0,
+    tipText: '',
+    tipTimer: 0,
+};
+
+// 5. Farm Helicopter (Boss Enemy - GDD 2.4)
 const helicopter = {
     active: false,
     x: 0,
-    targetLane: 1,
+    y: 0,
+    targetX: 0,
     dropTimer: 0,
-    drops: [],
-    spotlightOpacity: 0,
+    spotlightAngle: 0,
+    drops: [],              // falling net barricades
 };
 
-// ---- Game Objects ----
+// ---- Wave / Object System ----
 let obstacles = [];
 let coins = [];
 let powerups = [];
 let particles = [];
+let flyingTexts = [];
+let nextSpawnDistance = 20;
 
-// Kiki the Pigeon tips
-const kikiTips = [
-    "Swipe left/right to dodge! 🐦",
-    "Turbo Milk makes you invincible! 🥛",
-    "Watch out for Rover! He jumps into your lane! 🐕",
-    "Mud puddles slow you down! 💧",
-    "Collect coins for the shop! 🪙",
-    "The Milk Shield absorbs one hit! 🛡️",
-    "Speed increases every 200 meters! ⚡",
-    "The helicopter drops nets ahead! 🚁",
-    "Jump over fences, slide under barriers! 🏃",
-];
-let lastTipTime = 0;
-
-// ---- Biome ----
+// ---- Biome Logic (GDD 4.2) ----
 function getCurrentBiome() {
     if (distance >= BIOME_HIGHWAY) return 'highway';
     if (distance >= BIOME_HARVEST) return 'harvest';
@@ -253,27 +309,30 @@ function getBiomeColors() {
     switch(biome) {
         case 'barnyard':
             return {
-                sky: ['#4EC0E9', '#87CEEB'],
+                name: 'Level 1: Barnyard Escape',
+                sky: ['#4EC0E9', '#A6E3F9'],
                 ground: '#7CBC37',
                 road: '#A0875A',
                 roadLine: '#F9C846',
-                ambient: 'rgba(255,255,200,0.05)',
+                ambient: 'rgba(255, 255, 230, 0.04)',
             };
         case 'harvest':
             return {
-                sky: ['#F5A623', '#F9C846'],
-                ground: '#D4A017',
+                name: 'Level 2: Harvest Fields',
+                sky: ['#F59E0B', '#FCD34D'],
+                ground: '#C59A26',
                 road: '#8B6914',
-                roadLine: '#E8A923',
-                ambient: 'rgba(255,180,50,0.08)',
+                roadLine: '#FDE047',
+                ambient: 'rgba(255, 180, 50, 0.08)',
             };
         case 'highway':
             return {
-                sky: ['#4EC0E9', '#B0D4E8'],
-                ground: '#666',
-                road: '#444',
-                roadLine: '#FFF',
-                ambient: 'rgba(200,200,255,0.05)',
+                name: 'Level 3: Country Highway',
+                sky: ['#38BDF8', '#93C5FD'],
+                ground: '#4B5563',
+                road: '#374151',
+                roadLine: '#F8FAFC',
+                ambient: 'rgba(200, 220, 255, 0.05)',
             };
     }
 }
@@ -301,11 +360,17 @@ function initGame() {
     player.magnetActive = false;
     player.magnetTimer = 0;
     player.stumbleTimer = 0;
+    player.mooTimer = 0;
+    player.mooCooldown = 0;
 
     farmerJoe.active = true;
-    farmerJoe.closeness = 0;
+    farmerJoe.lane = 1;
+    farmerJoe.closeness = 15;
     farmerJoe.throwTimer = 0;
-    farmerJoe.netActive = false;
+    farmerJoe.throwing = false;
+    farmerJoe.shoutText = "Stop that cow! 👨‍🌾";
+    farmerJoe.shoutTimer = 180;
+    farmerJoe.stunnedTimer = 0;
 
     rover.active = false;
     rover.warning = false;
@@ -314,152 +379,299 @@ function initGame() {
     helicopter.active = false;
     helicopter.drops = [];
 
+    kiki.x = player.x + 35;
+    kiki.y = player.y - 85;
+    kiki.tipText = "Run Moo Moo! Swipe or WASD to dodge! 🐦";
+    kiki.tipTimer = 240;
+
     obstacles = [];
     coins = [];
     powerups = [];
     particles = [];
-
-    lastTipTime = 0;
+    flyingTexts = [];
+    nextSpawnDistance = 25;
 }
 
-// ---- Obstacle Generation ----
-let spawnTimer = 0;
-
-function spawnObstacle() {
+// ---- Pattern-Based Level Spawning (Never overlaps coins & deadly obstacles!) ----
+function generateWave() {
     const biome = getCurrentBiome();
-    const lane = Math.floor(Math.random() * 3);
-    let type, w, h, jumpable, slideable;
-
-    if (biome === 'barnyard') {
-        const r = Math.random();
-        if (r < 0.4) {
-            type = 'fence'; w = 55; h = 35; jumpable = true; slideable = false;
-        } else if (r < 0.7) {
-            type = 'haybale'; w = 50; h = 40; jumpable = true; slideable = false;
-        } else {
-            type = 'barrier'; w = 55; h = 50; jumpable = false; slideable = true;
-        }
-    } else if (biome === 'harvest') {
-        const r = Math.random();
-        if (r < 0.3) {
-            type = 'tractor'; w = 60; h = 55; jumpable = false; slideable = false;
-        } else if (r < 0.5) {
-            type = 'mud'; w = 55; h = 20; jumpable = true; slideable = false;
-        } else if (r < 0.75) {
-            type = 'fence'; w = 55; h = 35; jumpable = true; slideable = false;
-        } else {
-            type = 'barrier'; w = 55; h = 50; jumpable = false; slideable = true;
-        }
-    } else { // highway
-        const r = Math.random();
-        if (r < 0.35) {
-            type = 'truck'; w = 60; h = 60; jumpable = false; slideable = false;
-        } else if (r < 0.55) {
-            type = 'barrier'; w = 55; h = 50; jumpable = false; slideable = true;
-        } else if (r < 0.8) {
-            type = 'fence'; w = 55; h = 35; jumpable = true; slideable = false;
-        } else {
-            type = 'tractor'; w = 60; h = 55; jumpable = false; slideable = false;
-        }
-    }
-
     const vanishY = H() * VANISH_Y_RATIO;
-    obstacles.push({
-        type, lane, baseWidth: w, baseHeight: h,
-        y: vanishY - 20, // spawn just above horizon
-        jumpable, slideable,
-        hit: false,
-    });
 
-    // Occasionally spawn double obstacles
-    if (distance > 300 && Math.random() < 0.25) {
-        let lane2 = (lane + (Math.random() < 0.5 ? 1 : 2)) % 3;
-        obstacles.push({
-            type, lane: lane2, baseWidth: w, baseHeight: h,
-            y: vanishY - 20,
-            jumpable, slideable,
-            hit: false,
-        });
+    // Pick a wave pattern
+    const patterns = ['jump_fence', 'hay_dodge', 'barrier_slide', 'tractor_warning', 'coin_spread', 'mud_risk'];
+    if (biome === 'harvest') patterns.push('tractor_warning', 'mud_risk');
+    if (biome === 'highway') patterns.push('truck_dodge', 'fast_fences');
+
+    const choice = patterns[Math.floor(Math.random() * patterns.length)];
+    const primaryLane = Math.floor(Math.random() * 3);
+    const otherLanes = [0, 1, 2].filter(l => l !== primaryLane);
+
+    switch(choice) {
+        case 'jump_fence': {
+            // Fence in primaryLane, coins arc in air above it (jump reward)
+            obstacles.push({
+                type: 'fence',
+                lane: primaryLane,
+                y: vanishY - 15,
+                jumpable: true,
+                slideable: false,
+                hit: false,
+            });
+            // Arced coins above the fence!
+            for (let i = -1; i <= 1; i++) {
+                coins.push({
+                    lane: primaryLane,
+                    y: vanishY - 15 + i * 25,
+                    airborne: true, // collected when jumping!
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            // Ground coins on safe lane
+            const safeLane = otherLanes[Math.floor(Math.random() * otherLanes.length)];
+            for (let i = 0; i < 3; i++) {
+                coins.push({
+                    lane: safeLane,
+                    y: vanishY - 30 - i * 35,
+                    airborne: false,
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            break;
+        }
+
+        case 'hay_dodge': {
+            // Big round hay bale in one lane
+            obstacles.push({
+                type: 'haybale',
+                lane: primaryLane,
+                y: vanishY - 20,
+                jumpable: true,
+                slideable: false,
+                hit: false,
+            });
+            // Powerup chance in one of the other lanes!
+            if (Math.random() < 0.25) {
+                spawnRandomPowerup(otherLanes[0], vanishY - 20);
+            }
+            // Coins in other lane
+            const cLane = otherLanes[1] !== undefined ? otherLanes[1] : otherLanes[0];
+            for (let i = 0; i < 3; i++) {
+                coins.push({
+                    lane: cLane,
+                    y: vanishY - 10 - i * 35,
+                    airborne: false,
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            break;
+        }
+
+        case 'barrier_slide': {
+            // Tall clearance hurdle: MUST SLIDE UNDER!
+            obstacles.push({
+                type: 'barrier',
+                lane: primaryLane,
+                y: vanishY - 20,
+                jumpable: false,
+                slideable: true,
+                hit: false,
+            });
+            // Low coins right underneath it to reward sliding!
+            for (let i = 0; i < 2; i++) {
+                coins.push({
+                    lane: primaryLane,
+                    y: vanishY - 20 + i * 20,
+                    airborne: false,
+                    slideReward: true,
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            break;
+        }
+
+        case 'tractor_warning': {
+            // Big farm tractor: Cannot jump or slide, MUST DODGE LANE!
+            obstacles.push({
+                type: 'tractor',
+                lane: primaryLane,
+                y: vanishY - 30,
+                jumpable: false,
+                slideable: false,
+                hit: false,
+            });
+            // Coins guide player safely into other lanes
+            for (let l of otherLanes) {
+                coins.push({
+                    lane: l,
+                    y: vanishY - 25,
+                    airborne: false,
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            break;
+        }
+
+        case 'truck_dodge': {
+            // Highway delivery truck
+            obstacles.push({
+                type: 'truck',
+                lane: primaryLane,
+                y: vanishY - 40,
+                jumpable: false,
+                slideable: false,
+                hit: false,
+            });
+            break;
+        }
+
+        case 'mud_risk': {
+            // Mud slows player down (stumble), lets Farmer Joe catch up!
+            obstacles.push({
+                type: 'mud',
+                lane: primaryLane,
+                y: vanishY - 15,
+                jumpable: true,
+                slideable: false,
+                hit: false,
+            });
+            // Safe lane gets coins
+            const sLane = otherLanes[0];
+            for (let i = 0; i < 3; i++) {
+                coins.push({
+                    lane: sLane,
+                    y: vanishY - 15 - i * 30,
+                    airborne: false,
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            break;
+        }
+
+        case 'coin_spread': {
+            // Full coin line across paths
+            const count = 3 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < count; i++) {
+                coins.push({
+                    lane: primaryLane,
+                    y: vanishY - 10 - i * 32,
+                    airborne: false,
+                    collected: false,
+                    sparkle: Math.random() * 6,
+                });
+            }
+            if (Math.random() < 0.35) {
+                spawnRandomPowerup(otherLanes[0], vanishY - 30);
+            }
+            break;
+        }
+
+        default:
+            break;
     }
 }
 
-function spawnCoin() {
-    if (Math.random() > 0.03) return;
-    const lane = Math.floor(Math.random() * 3);
-    const vanishY = H() * VANISH_Y_RATIO;
-    const count = Math.random() < 0.3 ? 3 : 1;
-    for (let i = 0; i < count; i++) {
-        coins.push({
-            lane,
-            y: vanishY - 10 - i * 15,
-            collected: false,
-            baseSize: 16,
-            sparkle: Math.random() * 6,
-        });
-    }
-}
-
-function spawnPowerup() {
-    if (Math.random() > 0.003) return;
-    const lane = Math.floor(Math.random() * 3);
+function spawnRandomPowerup(lane, y) {
     const types = ['turbo', 'magnet', 'shield'];
     const type = types[Math.floor(Math.random() * types.length)];
-    const vanishY = H() * VANISH_Y_RATIO;
     powerups.push({
-        type, lane,
-        y: vanishY - 10,
+        type,
+        lane,
+        y,
         collected: false,
-        baseSize: 22,
         glow: 0,
     });
 }
 
-// ---- Particle System ----
-function spawnParticles(x, y, color, count = 5, speed = 3) {
-    for (let i = 0; i < count; i++) {
-        particles.push({
-            x, y,
-            vx: (Math.random() - 0.5) * speed * 2,
-            vy: (Math.random() - 1) * speed,
-            life: 1,
-            decay: 0.02 + Math.random() * 0.03,
-            size: 3 + Math.random() * 4,
-            color,
-        });
-    }
+function spawnFlyingText(text, x, y, color = '#FFF') {
+    flyingTexts.push({
+        text,
+        x,
+        y,
+        vy: -1.5,
+        alpha: 1,
+        color,
+    });
 }
 
-// ---- Player Actions ----
+// ---- Actions ----
 function moveLeft() {
-    if (player.targetLane > 0) { player.targetLane--; sfxClick(); }
+    if (player.targetLane > 0) {
+        player.targetLane--;
+        sfxClick();
+    }
 }
 function moveRight() {
-    if (player.targetLane < 2) { player.targetLane++; sfxClick(); }
+    if (player.targetLane < 2) {
+        player.targetLane++;
+        sfxClick();
+    }
 }
 function jump() {
     if (!player.jumping && !player.sliding) {
         player.jumping = true;
-        player.jumpVel = -14;
+        player.jumpVel = -15.5;
         sfxJump();
+        // Dust kickup
+        spawnParticles(player.x, player.y + 15, '#A0875A', 6, 2.5);
     }
 }
 function slide() {
     if (!player.jumping && !player.sliding) {
         player.sliding = true;
-        player.slideTimer = 30;
+        player.slideTimer = 32;
         sfxSlide();
+        spawnParticles(player.x, player.y + 15, '#A0875A', 5, 2);
     }
 }
+function doMoo() {
+    if (player.mooCooldown > 0) return;
+    player.mooTimer = 45;
+    player.mooCooldown = 180; // 3 seconds cooldown
+    sfxMoo();
 
-// ---- Input Handling ----
+    // Shockwave particle effect
+    spawnParticles(player.x, player.y - 25, COLORS.cowbellGold, 18, 5);
+    spawnFlyingText("MOOOOOOO! 🎵", player.x, player.y - 70, COLORS.cowbellGold);
+
+    // Distracts / slows pursuers (GDD Section 5)
+    farmerJoe.stunnedTimer = 90;
+    farmerJoe.closeness = Math.max(5, farmerJoe.closeness - 20);
+    farmerJoe.shoutText = "Darn cow! Too loud! 🙉";
+    farmerJoe.shoutTimer = 90;
+
+    if (rover.active) {
+        rover.stunnedTimer = 90;
+        rover.barkText = "Whine... 🐕";
+        rover.barkTimer = 90;
+    }
+
+    kiki.tipText = "Great Moo! Farmer Joe is startled! 🐦";
+    kiki.tipTimer = 120;
+}
+
+// ---- Input Bindings (GDD Section 5) ----
 document.addEventListener('keydown', (e) => {
     if (state !== 'playing') return;
     switch(e.key) {
-        case 'ArrowLeft': case 'a': case 'A': moveLeft(); break;
-        case 'ArrowRight': case 'd': case 'D': moveRight(); break;
-        case 'ArrowUp': case 'w': case 'W': case ' ': e.preventDefault(); jump(); break;
-        case 'ArrowDown': case 's': case 'S': slide(); break;
-        case 'Escape': case 'p': case 'P': pauseGame(); break;
+        case 'ArrowLeft': case 'a': case 'A':
+            moveLeft(); break;
+        case 'ArrowRight': case 'd': case 'D':
+            moveRight(); break;
+        case 'ArrowUp': case 'w': case 'W': case ' ':
+            e.preventDefault();
+            jump(); break;
+        case 'ArrowDown': case 's': case 'S':
+            slide(); break;
+        case 'f': case 'F':
+            doMoo(); break;
+        case 'Escape': case 'p': case 'P':
+            pauseGame(); break;
     }
 });
 
@@ -477,9 +689,17 @@ document.addEventListener('touchend', (e) => {
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
     const dt = Date.now() - touchStartTime;
+
     if (dt > 500) return;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
+
+    if (absDx < 15 && absDy < 15) {
+        // Quick tap: MOO!
+        doMoo();
+        return;
+    }
+
     if (absDx > 30 && absDx > absDy) {
         if (dx > 0) moveRight(); else moveLeft();
     } else if (absDy > 30 && absDy > absDx) {
@@ -487,342 +707,425 @@ document.addEventListener('touchend', (e) => {
     }
 }, { passive: true });
 
-// ---- Collision Detection (perspective-aware) ----
-function checkCollision(obj) {
-    const scale = getScaleAtY(obj.y);
-    const objW = obj.baseWidth * scale;
-    const objH = obj.baseHeight * scale;
-    const objX = getLaneXAtY(obj.lane, obj.y);
-
-    const px = player.x;
-    const py = player.y + player.jumpY;
-    const pw = player.width * 0.5;
-    const ph = player.sliding ? player.height * 0.3 : player.height * 0.7;
-    const pyTop = player.sliding ? py : py - ph;
-
-    return (
-        Math.abs(px - objX) < (pw + objW) / 2 &&
-        pyTop < obj.y + objH / 2 &&
-        py > obj.y - objH / 2
-    );
-}
-
-// ---- Update Game ----
+// ---- Update Loop ----
 function update(dt) {
     if (state !== 'playing') return;
     frameCount++;
 
-    // Speed increases by 5% every 200 meters (GDD)
-    const speedMultiplier = 1 + Math.floor(distance / 200) * 0.05;
-    gameSpeed = Math.min(BASE_SPEED * speedMultiplier, MAX_SPEED);
-    if (player.turboActive) gameSpeed = MAX_SPEED;
+    // Speed scales up 5% every 200m (GDD 3.6.7)
+    const speedMult = 1 + Math.floor(distance / 200) * 0.05;
+    gameSpeed = Math.min(BASE_SPEED * speedMult, MAX_SPEED);
+    if (player.turboActive) gameSpeed = MAX_SPEED * 1.35;
 
-    // Distance
-    const metersDelta = gameSpeed * 0.15;
+    const metersDelta = gameSpeed * 0.16;
     distance += metersDelta;
     score = Math.floor(distance * 10 * scoreMultiplier);
 
-    // -- Player update --
+    // -- Player Positioning & Physics --
     player.y = H() * PLAYER_Y_RATIO;
     const targetX = getLaneX(player.targetLane);
-    player.x += (targetX - player.x) * 0.2;
+    player.x += (targetX - player.x) * 0.22;
     player.lane = player.targetLane;
 
-    // Jump
+    // Jumping physics
     if (player.jumping) {
-        player.jumpVel += 0.8;
+        player.jumpVel += 0.88; // gravity
         player.jumpY += player.jumpVel;
         if (player.jumpY >= 0) {
             player.jumpY = 0;
             player.jumping = false;
             player.jumpVel = 0;
+            spawnParticles(player.x, player.y + 15, '#A0875A', 4, 1.8);
         }
     }
 
-    // Slide
+    // Sliding physics
     if (player.sliding) {
         player.slideTimer--;
         if (player.slideTimer <= 0) player.sliding = false;
     }
 
+    // Stumble
     if (player.stumbleTimer > 0) player.stumbleTimer--;
+    if (player.mooTimer > 0) player.mooTimer--;
+    if (player.mooCooldown > 0) player.mooCooldown--;
 
-    // Animation
+    // Leg anim
     player.animTimer++;
-    if (player.animTimer > 6) { player.animFrame = (player.animFrame + 1) % 4; player.animTimer = 0; }
+    if (player.animTimer > (player.turboActive ? 2 : 4)) {
+        player.animFrame = (player.animFrame + 1) % 4;
+        player.animTimer = 0;
+    }
 
-    // Power-ups timer
+    // Power-up durations
     if (player.turboActive) {
         player.turboTimer -= dt;
-        if (player.turboTimer <= 0) { player.turboActive = false; player.turboTimer = 0; }
+        spawnParticles(player.x + (Math.random()-0.5)*30, player.y + 10, '#FFF', 2, 2);
+        if (player.turboTimer <= 0) player.turboActive = false;
     }
     if (player.magnetActive) {
         player.magnetTimer -= dt;
-        if (player.magnetTimer <= 0) { player.magnetActive = false; player.magnetTimer = 0; }
+        if (player.magnetTimer <= 0) player.magnetActive = false;
     }
 
-    // -- Spawning --
-    spawnTimer += gameSpeed;
-    const minGap = Math.max(60, 150 - distance * 0.03);
-    if (spawnTimer > minGap) {
-        spawnObstacle();
-        spawnTimer = 0;
+    // -- Wave Spawning --
+    if (distance >= nextSpawnDistance) {
+        generateWave();
+        // Distance gap between obstacle waves (gets slightly tighter at high speed)
+        const gap = Math.max(35, 65 - distance * 0.01);
+        nextSpawnDistance = distance + gap;
     }
-    spawnCoin();
-    spawnPowerup();
 
-    // -- Move all objects down the road (perspective motion) --
-    // Objects accelerate as they get closer (perspective)
+    // -- Move Obstacles (Perspective acceleration) --
     const h = H();
     const vanishY = h * VANISH_Y_RATIO;
 
     for (let o of obstacles) {
         const t = getPerspectiveT(o.y);
-        // speed increases as objects get closer (quadratic feel)
-        o.y += gameSpeed * (0.3 + t * 1.5);
+        o.y += gameSpeed * (0.28 + t * 1.6);
     }
-    obstacles = obstacles.filter(o => o.y < h + 100 && !o.hit);
+    obstacles = obstacles.filter(o => o.y < h + 150 && !o.hit);
 
+    // -- Move Coins --
     for (let c of coins) {
         const t = getPerspectiveT(c.y);
-        c.y += gameSpeed * (0.3 + t * 1.5);
-        c.sparkle += 0.1;
+        c.y += gameSpeed * (0.28 + t * 1.6);
+        c.sparkle += 0.12;
 
-        // Magnet
+        // Magnet attraction
         if (player.magnetActive && !c.collected) {
             const cx = getLaneXAtY(c.lane, c.y);
             const dx = player.x - cx;
             const dy = (player.y + player.jumpY) - c.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < 180) {
-                c.y += dy * 0.12;
+            if (dist < 260) {
+                c.y += dy * 0.18;
+                // Move towards player lane
+                if (Math.abs(dx) > 10) c.lane = player.lane;
             }
         }
     }
-    coins = coins.filter(c => c.y < h + 50 && !c.collected);
+    coins = coins.filter(c => c.y < h + 60 && !c.collected);
 
+    // -- Move Power-ups --
     for (let p of powerups) {
         const t = getPerspectiveT(p.y);
-        p.y += gameSpeed * (0.3 + t * 1.5);
-        p.glow += 0.08;
+        p.y += gameSpeed * (0.28 + t * 1.6);
+        p.glow += 0.1;
     }
-    powerups = powerups.filter(p => p.y < h + 50 && !p.collected);
+    powerups = powerups.filter(p => p.y < h + 60 && !p.collected);
 
-    // Particles
+    // -- Particles Update --
     for (let p of particles) {
-        p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life -= p.decay;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= p.decay;
     }
     particles = particles.filter(p => p.life > 0);
 
-    // -- Collision: Obstacles --
-    for (let o of obstacles) {
-        if (o.hit) continue;
-        if (o.jumpable && player.jumping && player.jumpY < -20) continue;
-        if (o.slideable && player.sliding) continue;
-
-        if (checkCollision(o)) {
-            o.hit = true;
-            if (player.turboActive) {
-                const ox = getLaneXAtY(o.lane, o.y);
-                spawnParticles(ox, o.y, '#FFF', 8, 5);
-                continue;
-            }
-            if (o.type === 'mud') {
-                player.stumbleTimer = 30;
-                const ox = getLaneXAtY(o.lane, o.y);
-                spawnParticles(ox, o.y, COLORS.mud, 6, 3);
-                sfxSlide();
-                continue;
-            }
-            if (player.hasShield) {
-                player.hasShield = false;
-                player.stumbleTimer = 20;
-                const ox = getLaneXAtY(o.lane, o.y);
-                spawnParticles(ox, o.y, COLORS.skyBlue, 10, 4);
-                document.getElementById('hudShield').style.display = 'none';
-                sfxCrash();
-                continue;
-            }
-            sfxCrash();
-            const ox = getLaneXAtY(o.lane, o.y);
-            spawnParticles(ox, o.y, COLORS.barnRed, 15, 5);
-            gameOver(`Crashed into a ${o.type}!`);
-            return;
-        }
+    // -- Flying Text Update --
+    for (let ft of flyingTexts) {
+        ft.y += ft.vy;
+        ft.alpha -= 0.015;
     }
+    flyingTexts = flyingTexts.filter(ft => ft.alpha > 0);
 
-    // -- Collision: Coins --
+    // ==========================================
+    // SEPARATED COLLISION DETECTION (No bugs!)
+    // ==========================================
+
+    // 1. COIN COLLECTION (Safe & Independent)
     for (let c of coins) {
         if (c.collected) continue;
         const cx = getLaneXAtY(c.lane, c.y);
-        const dx = player.x - cx;
-        const dy = (player.y + player.jumpY) - c.y;
-        if (Math.sqrt(dx*dx + dy*dy) < 35) {
+        const playerActualY = player.y + player.jumpY;
+
+        // X proximity: player must be in the same lane
+        const xDist = Math.abs(player.x - cx);
+        const yDist = Math.abs(playerActualY - c.y);
+
+        // If coin is airborne, player needs to be jumping near its height
+        let heightMatch = true;
+        if (c.airborne && !player.jumping) {
+            heightMatch = false;
+        }
+
+        if (xDist < 45 && yDist < 40 && heightMatch) {
             c.collected = true;
             coinsCollected++;
-            spawnParticles(cx, c.y, COLORS.strawYellow, 4, 2);
             sfxCoin();
+            spawnParticles(cx, c.y, COLORS.strawYellow, 5, 2.5);
+            spawnFlyingText("+1 🪙", cx, c.y - 10, COLORS.strawYellow);
         }
     }
 
-    // -- Collision: Powerups --
+    // 2. POWER-UP COLLECTION (Safe & Independent)
     for (let p of powerups) {
         if (p.collected) continue;
-        const px2 = getLaneXAtY(p.lane, p.y);
-        const dx = player.x - px2;
-        const dy = (player.y + player.jumpY) - p.y;
-        if (Math.sqrt(dx*dx + dy*dy) < 40) {
+        const px = getLaneXAtY(p.lane, p.y);
+        const xDist = Math.abs(player.x - px);
+        const yDist = Math.abs((player.y + player.jumpY) - p.y);
+
+        if (xDist < 50 && yDist < 45) {
             p.collected = true;
             sfxPowerup();
+
             if (p.type === 'turbo') {
                 player.turboActive = true;
                 player.turboTimer = TURBO_DURATION;
-                showKikiTip("Turbo Milk activated! 🥛💨");
+                spawnFlyingText("TURBO MILK! ⚡🥛", player.x, player.y - 50, COLORS.skyBlue);
+                kiki.tipText = "Turbo Milk! Blast through everything! 🥛💨";
+                kiki.tipTimer = 150;
             } else if (p.type === 'magnet') {
                 player.magnetActive = true;
                 player.magnetTimer = MAGNET_DURATION;
-                showKikiTip("Coin Magnet active! 🧲");
+                spawnFlyingText("COIN MAGNET! 🧲", player.x, player.y - 50, COLORS.cowbellGold);
+                kiki.tipText = "Coin Magnet! All coins are yours! 🧲";
+                kiki.tipTimer = 150;
             } else if (p.type === 'shield') {
                 player.hasShield = true;
                 document.getElementById('hudShield').style.display = 'block';
-                showKikiTip("Milk Shield ready! 🛡️");
+                spawnFlyingText("MILK SHIELD! 🛡️", player.x, player.y - 50, '#FFF');
+                kiki.tipText = "Milk Shield active! 1 free hit! 🛡️";
+                kiki.tipTimer = 150;
             }
         }
     }
 
-    // -- Farmer Joe --
-    if (farmerJoe.active) {
-        if (player.stumbleTimer > 0) farmerJoe.closeness += 0.3;
-        else if (player.turboActive) farmerJoe.closeness = Math.max(0, farmerJoe.closeness - 2);
-        else farmerJoe.closeness = Math.max(0, farmerJoe.closeness - 0.05);
+    // 3. OBSTACLE COLLISION (Precise & Fair)
+    for (let o of obstacles) {
+        if (o.hit) continue;
 
-        farmerJoe.throwTimer += dt;
-        if (farmerJoe.throwTimer > 8 && distance > 100 && farmerJoe.closeness > 30) {
-            farmerJoe.throwTimer = 0;
-            farmerJoe.netActive = true;
-            farmerJoe.netLane = player.lane;
-            farmerJoe.netY = h + 50;
+        // Proximity check in Z/Y space
+        const yDist = Math.abs(player.y - o.y);
+        if (yDist > 30) continue; // Not close enough vertically
+
+        // X check: player must be in the same lane
+        const ox = getLaneXAtY(o.lane, o.y);
+        if (Math.abs(player.x - ox) > 45) continue; // In a different lane
+
+        // Check player avoidance moves:
+        // Jumpable obstacles (Fences, Hay Bales): safe if player is jumping high enough
+        if (o.jumpable && player.jumping && player.jumpY < -24) {
+            continue; // Successfully jumped over!
         }
-        if (farmerJoe.netActive) {
-            farmerJoe.netY -= gameSpeed * 1.2;
-            if (farmerJoe.netY < vanishY) farmerJoe.netActive = false;
-            const netX = getLaneXAtY(farmerJoe.netLane, player.y);
-            if (Math.abs(player.x - netX) < 30 && Math.abs((player.y + player.jumpY) - farmerJoe.netY) < 30) {
-                if (!player.turboActive) {
-                    if (player.hasShield) {
-                        player.hasShield = false;
-                        document.getElementById('hudShield').style.display = 'none';
-                        farmerJoe.netActive = false;
-                    } else if (!player.jumping) {
-                        sfxCrash();
-                        gameOver("Caught by Farmer Joe's net! 🥅");
-                        return;
-                    }
-                }
-            }
+
+        // Slideable obstacles (Low Barriers): safe if player is currently sliding
+        if (o.slideable && player.sliding) {
+            continue; // Successfully slid underneath!
         }
-        if (farmerJoe.closeness >= 95) {
+
+        // TURBO MILK blasts right through!
+        if (player.turboActive) {
+            o.hit = true;
             sfxCrash();
-            gameOver("Farmer Joe caught you! 👨‍🌾");
-            return;
+            spawnParticles(ox, o.y, '#FFF', 15, 6);
+            spawnFlyingText("SMASH! 💥", ox, o.y - 20, '#FFF');
+            continue;
+        }
+
+        // MUD: does not instakill! Slows player down & lets Farmer Joe get closer
+        if (o.type === 'mud') {
+            o.hit = true;
+            player.stumbleTimer = 45;
+            farmerJoe.closeness = Math.min(92, farmerJoe.closeness + 25);
+            farmerJoe.shoutText = "Gotcha slipping! 👨‍🌾";
+            farmerJoe.shoutTimer = 90;
+            sfxSlide();
+            spawnParticles(ox, o.y, COLORS.mud, 12, 3);
+            spawnFlyingText("SPLAT! MUD! 💦", player.x, player.y - 40, COLORS.mud);
+            kiki.tipText = "Mud puddle! Farmer Joe is catching up! 🏃";
+            kiki.tipTimer = 120;
+            continue;
+        }
+
+        // SHIELD absorbs 1 collision hit!
+        if (player.hasShield) {
+            o.hit = true;
+            player.hasShield = false;
+            player.stumbleTimer = 35;
+            document.getElementById('hudShield').style.display = 'none';
+            sfxCrash();
+            spawnParticles(ox, o.y, COLORS.skyBlue, 16, 5);
+            spawnFlyingText("SHIELD BROKE! 🛡️💥", player.x, player.y - 40, COLORS.skyBlue);
+            continue;
+        }
+
+        // Direct fatal collision
+        o.hit = true;
+        sfxCrash();
+        spawnParticles(ox, o.y, COLORS.barnRed, 20, 6);
+        gameOver(`Crashed into a ${o.type.toUpperCase()}!`);
+        return;
+    }
+
+    // ==========================================
+    // PURSUERS & NPCS (Faithful to GDD)
+    // ==========================================
+
+    // --- 1. Farmer Joe ---
+    if (farmerJoe.stunnedTimer > 0) {
+        farmerJoe.stunnedTimer--;
+    } else {
+        // Natural distance decay or approach
+        if (player.stumbleTimer > 0) {
+            farmerJoe.closeness += 0.45;
+        } else if (player.turboActive) {
+            farmerJoe.closeness = Math.max(5, farmerJoe.closeness - 2.5);
+        } else {
+            farmerJoe.closeness = Math.max(10, farmerJoe.closeness - 0.08);
+        }
+
+        // Net Throwing Attack (GDD 2.4 & 3.6.2)
+        farmerJoe.throwTimer += dt;
+        if (farmerJoe.throwTimer > 9 && distance > 80 && farmerJoe.closeness > 30) {
+            farmerJoe.throwTimer = 0;
+            farmerJoe.throwing = true;
+            farmerJoe.throwAnim = 30;
+            farmerJoe.shoutText = "Take this net! 🥅";
+            farmerJoe.shoutTimer = 90;
+
+            // Throw a net obstacle ahead in player's current lane!
+            obstacles.push({
+                type: 'fence', // jumpable net
+                lane: player.lane,
+                y: player.y - 200,
+                jumpable: true,
+                slideable: false,
+                hit: false,
+                isNet: true,
+            });
+            spawnFlyingText("NET INCOMING! ⚠️", player.x, player.y - 120, COLORS.barnRed);
         }
     }
 
-    // -- Rover the Dog (after 500m) --
-    if (distance > BIOME_HARVEST && !rover.active && Math.random() < 0.001) {
+    if (farmerJoe.throwAnim > 0) farmerJoe.throwAnim--;
+    if (farmerJoe.shoutTimer > 0) farmerJoe.shoutTimer--;
+
+    // Game Over if Farmer Joe catches Moo Moo
+    if (farmerJoe.closeness >= 98) {
+        sfxCrash();
+        gameOver("Caught by Farmer Joe and his net! 👨‍🌾🥅");
+        return;
+    }
+
+    // Farmer Joe follows Moo Moo's lane smoothly
+    farmerJoe.lane = player.lane;
+    farmerJoe.x += (player.x - farmerJoe.x) * 0.15;
+    farmerJoe.y = player.y + 65 + (100 - farmerJoe.closeness) * 1.5;
+
+    // --- 2. Rover the Dog (Starts at 500m - GDD 2.4) ---
+    if (distance >= BIOME_HARVEST && !rover.active && Math.random() < 0.003) {
         rover.active = true;
         rover.lane = Math.floor(Math.random() * 3);
         rover.y = vanishY;
         rover.warning = true;
-        rover.warningTimer = 90;
+        rover.warningTimer = 90; // 1.5 seconds warning (GDD 3.6.3)
         rover.leaping = false;
+        rover.barkText = "WOOF! WOOF! 🐕";
+        rover.barkTimer = 90;
         sfxBark();
-        showKikiTip("Watch out! Rover incoming! 🐕");
+        kiki.tipText = "Rover is leaping! Jump or switch lane! 🐕";
+        kiki.tipTimer = 120;
     }
+
     if (rover.active) {
         if (rover.warning) {
             rover.warningTimer--;
             if (rover.warningTimer <= 0) {
                 rover.warning = false;
                 rover.leaping = true;
-                rover.lane = player.lane;
-                rover.y = vanishY;
+                rover.lane = player.lane; // targets player's lane!
+                rover.y = vanishY + 30;
             }
-        }
-        if (rover.leaping) {
-            const t = getPerspectiveT(rover.y);
-            rover.y += gameSpeed * (0.5 + t * 2);
-            const rx = getLaneXAtY(rover.lane, rover.y);
-            if (Math.abs(player.x - rx) < 30 && Math.abs((player.y + player.jumpY) - rover.y) < 35) {
-                if (!player.turboActive) {
-                    if (player.hasShield) {
-                        player.hasShield = false;
-                        document.getElementById('hudShield').style.display = 'none';
-                        rover.active = false;
-                    } else if (!player.jumping) {
-                        sfxCrash();
-                        gameOver("Rover the Dog tackled you! 🐕");
-                        return;
-                    }
-                }
-            }
-            if (rover.y > h + 100) rover.active = false;
-        }
-    }
+        } else if (rover.leaping) {
+            if (rover.stunnedTimer > 0) {
+                rover.stunnedTimer--;
+            } else {
+                const t = getPerspectiveT(rover.y);
+                rover.y += gameSpeed * (0.4 + t * 1.8);
+                rover.x = getLaneXAtY(rover.lane, rover.y);
 
-    // -- Helicopter (after 1500m) --
-    if (distance > BIOME_HIGHWAY && !helicopter.active && Math.random() < 0.0005) {
-        helicopter.active = true;
-        helicopter.x = W() / 2;
-        helicopter.targetLane = player.lane;
-        helicopter.dropTimer = 120;
-        helicopter.drops = [];
-        showKikiTip("Helicopter spotted! Watch for nets! 🚁");
-    }
-    if (helicopter.active) {
-        helicopter.x += (getLaneXAtY(helicopter.targetLane, h * 0.3) - helicopter.x) * 0.03;
-        helicopter.spotlightOpacity = 0.1 + Math.sin(frameCount * 0.05) * 0.05;
-        helicopter.dropTimer--;
-        if (helicopter.dropTimer <= 0) {
-            const numDrops = 2 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < numDrops; i++) {
-                helicopter.drops.push({
-                    lane: Math.floor(Math.random() * 3),
-                    y: vanishY + 20 + i * 30,
-                });
-            }
-            helicopter.dropTimer = 240;
-            helicopter.targetLane = Math.floor(Math.random() * 3);
-        }
-        for (let d of helicopter.drops) {
-            const t = getPerspectiveT(d.y);
-            d.y += gameSpeed * (0.3 + t * 1.5);
-            const dx = getLaneXAtY(d.lane, d.y);
-            if (Math.abs(player.x - dx) < 30 && Math.abs((player.y + player.jumpY) - d.y) < 30) {
-                if (!player.turboActive) {
-                    if (player.hasShield) {
+                // Check collision with Moo Moo
+                const yDist = Math.abs(player.y - rover.y);
+                const xDist = Math.abs(player.x - rover.x);
+
+                if (yDist < 25 && xDist < 40) {
+                    if (player.jumping && player.jumpY < -20) {
+                        // Leaped over Rover!
+                        spawnFlyingText("VAULTED ROVER! 🐶✨", player.x, player.y - 40, COLORS.strawYellow);
+                    } else if (player.turboActive) {
+                        rover.active = false;
+                        spawnParticles(rover.x, rover.y, COLORS.cowbellGold, 12, 4);
+                    } else if (player.hasShield) {
                         player.hasShield = false;
+                        rover.active = false;
                         document.getElementById('hudShield').style.display = 'none';
-                        d.y = h + 100;
+                        sfxCrash();
                     } else {
                         sfxCrash();
-                        gameOver("Hit by helicopter net! 🚁🥅");
+                        gameOver("Tackled by Rover the Dog! 🐕");
                         return;
                     }
                 }
+
+                if (rover.y > h + 120) rover.active = false;
             }
         }
-        helicopter.drops = helicopter.drops.filter(d => d.y < h + 100);
-        if (helicopter.drops.length === 0 && helicopter.dropTimer > 100) {
-            helicopter.active = false;
-        }
+        if (rover.barkTimer > 0) rover.barkTimer--;
     }
 
-    // -- Kiki tips --
-    if (distance - lastTipTime > 300 && Math.random() < 0.002) {
-        const tip = kikiTips[Math.floor(Math.random() * kikiTips.length)];
-        showKikiTip(tip);
-        lastTipTime = distance;
+    // --- 3. Kiki the Pigeon (Guide NPC - GDD 2.5) ---
+    kiki.x += ((player.x + 35) - kiki.x) * 0.12;
+    kiki.y = (player.y - 85 + Math.sin(frameCount * 0.12) * 8);
+    kiki.wingAngle = Math.sin(frameCount * 0.28) * 0.45;
+    if (kiki.tipTimer > 0) kiki.tipTimer--;
+
+    // Periodically show helpful guidance tips
+    if (kiki.tipTimer <= 0 && Math.random() < 0.003) {
+        const helpfulTips = [
+            "Press F or Tap to MOO and stun Farmer Joe! 📢",
+            "Jump over wooden fences and hay bales! 🏃",
+            "Slide under the clearance banners! ⬇️",
+            "Tractors can't be jumped - switch lanes! 🚜",
+            "Turbo Milk smashes everything! 🥛💥",
+            "Coins give you high scores and shop skins! 🪙",
+        ];
+        kiki.tipText = helpfulTips[Math.floor(Math.random() * helpfulTips.length)];
+        kiki.tipTimer = 180;
+    }
+
+    // --- 4. Farm Helicopter (Boss - Level 3 at 1500m+) ---
+    if (distance >= BIOME_HIGHWAY && !helicopter.active && Math.random() < 0.002) {
+        helicopter.active = true;
+        helicopter.x = W() / 2;
+        helicopter.y = vanishY - 70;
+        helicopter.dropTimer = 120;
+        helicopter.drops = [];
+        kiki.tipText = "Helicopter boss! Watch out for dropped nets! 🚁";
+        kiki.tipTimer = 200;
+    }
+
+    if (helicopter.active) {
+        helicopter.x += (getLaneXAtY(player.lane, vanishY) - helicopter.x) * 0.04;
+        helicopter.dropTimer--;
+
+        if (helicopter.dropTimer <= 0) {
+            // Drop a heavy net trap
+            helicopter.dropTimer = 220; // attack cooldown (GDD 3.6.3)
+            const targetLane = Math.floor(Math.random() * 3);
+            obstacles.push({
+                type: 'barrier', // Net barricade
+                lane: targetLane,
+                y: vanishY + 10,
+                jumpable: false,
+                slideable: true,
+                hit: false,
+                isNet: true,
+            });
+            spawnFlyingText("NET DROPPED! 🚁🥅", getLaneXAtY(targetLane, vanishY + 20), vanishY + 20, COLORS.barnRed);
+        }
     }
 
     // -- Update HUD --
@@ -845,7 +1148,9 @@ function update(dt) {
     }
 }
 
-// ============ DRAW ============
+// ==========================================
+// RENDERING SYSTEM (Detailed 2D Cartoon Style)
+// ==========================================
 
 function draw() {
     const w = W(), h = H();
@@ -856,56 +1161,58 @@ function draw() {
     const vanishY = h * VANISH_Y_RATIO;
     const cx = w / 2;
 
-    // -- Sky --
+    // -- 1. Sky & Backdrop --
     const skyGrad = ctx.createLinearGradient(0, 0, 0, vanishY);
     skyGrad.addColorStop(0, colors.sky[0]);
     skyGrad.addColorStop(1, colors.sky[1]);
     ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, w, vanishY + 10);
+    ctx.fillRect(0, 0, w, vanishY + 5);
 
-    // -- Horizon decorations --
-    drawHorizon(w, h, vanishY, biome);
+    // Sun / Cloud
+    ctx.fillStyle = 'rgba(255, 245, 180, 0.6)';
+    ctx.beginPath();
+    ctx.arc(w * 0.85, vanishY * 0.45, 36, 0, Math.PI * 2);
+    ctx.fill();
 
-    // -- Ground (outside road) --
+    // Horizon scenery
+    drawHorizonScenery(w, h, vanishY, biome);
+
+    // -- 2. Pasture / Ground outside road --
     ctx.fillStyle = colors.ground;
     ctx.fillRect(0, vanishY, w, h - vanishY);
 
-    // -- Road with perspective --
-    const roadBottomLeft = cx - w * ROAD_BOTTOM_WIDTH / 2;
-    const roadBottomRight = cx + w * ROAD_BOTTOM_WIDTH / 2;
-    const roadTopLeft = cx - w * ROAD_TOP_WIDTH / 2;
-    const roadTopRight = cx + w * ROAD_TOP_WIDTH / 2;
+    // -- 3. Road Surface with Perspective --
+    const rBottomHalf = w * ROAD_BOTTOM_WIDTH / 2;
+    const rTopHalf = w * ROAD_TOP_WIDTH / 2;
+    const bLeft = cx - rBottomHalf, bRight = cx + rBottomHalf;
+    const tLeft = cx - rTopHalf, tRight = cx + rTopHalf;
 
-    // Road surface
+    // Asphalt / Dirt Road Body
     ctx.fillStyle = colors.road;
     ctx.beginPath();
-    ctx.moveTo(roadBottomLeft, h);
-    ctx.lineTo(roadTopLeft, vanishY);
-    ctx.lineTo(roadTopRight, vanishY);
-    ctx.lineTo(roadBottomRight, h);
+    ctx.moveTo(bLeft, h);
+    ctx.lineTo(tLeft, vanishY);
+    ctx.lineTo(tRight, vanishY);
+    ctx.lineTo(bRight, h);
     ctx.closePath();
     ctx.fill();
 
-    // Road edge lines
-    ctx.strokeStyle = '#FFF';
-    ctx.lineWidth = 3;
+    // Road Edge Curbs / White border lines
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(roadBottomLeft, h);
-    ctx.lineTo(roadTopLeft, vanishY);
-    ctx.stroke();
+    ctx.moveTo(bLeft, h); ctx.lineTo(tLeft, vanishY); ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(roadBottomRight, h);
-    ctx.lineTo(roadTopRight, vanishY);
-    ctx.stroke();
+    ctx.moveTo(bRight, h); ctx.lineTo(tRight, vanishY); ctx.stroke();
 
-    // Lane divider lines (dashed)
+    // 3-Lane dashed divider lines
     ctx.strokeStyle = colors.roadLine;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([15, 12]);
-    for (let i = 1; i < 3; i++) {
-        const frac = i / 3;
-        const bx = roadBottomLeft + (roadBottomRight - roadBottomLeft) * frac;
-        const tx = roadTopLeft + (roadTopRight - roadTopLeft) * frac;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([20, 16]);
+    for (let i = 1; i < LANE_COUNT; i++) {
+        const frac = i / LANE_COUNT;
+        const bx = bLeft + (bRight - bLeft) * frac;
+        const tx = tLeft + (tRight - tLeft) * frac;
         ctx.beginPath();
         ctx.moveTo(bx, h);
         ctx.lineTo(tx, vanishY);
@@ -913,523 +1220,931 @@ function draw() {
     }
     ctx.setLineDash([]);
 
-    // -- Road dashes (center, scrolling) --
-    ctx.strokeStyle = colors.roadLine;
-    ctx.lineWidth = 2;
-    const dashCount = 20;
-    for (let i = 0; i < dashCount; i++) {
-        // Evenly spaced in perspective-T space
-        let rawT = ((i / dashCount) + (frameCount * gameSpeed * 0.001)) % 1;
-        // Non-linear: accelerate towards camera
-        let t = rawT * rawT;
+    // Animated road stripes (scrolling sensation)
+    const stripeCount = 18;
+    for (let i = 0; i < stripeCount; i++) {
+        let rawT = ((i / stripeCount) + (frameCount * gameSpeed * 0.0014)) % 1;
+        let t = rawT * rawT; // perspective curve
         let sy = vanishY + (h - vanishY) * t;
         let halfW = getRoadHalfWidth(sy);
         let laneW = (halfW * 2) / 3;
-        // Draw dash in each lane
-        let dashLen = 6 * t + 1;
-        ctx.globalAlpha = t;
-        for (let lane = 0; lane < 2; lane++) {
-            let dx = cx - halfW + laneW * (lane + 1);
-            ctx.beginPath();
-            ctx.moveTo(dx, sy - dashLen);
-            ctx.lineTo(dx, sy + dashLen);
-            ctx.stroke();
+
+        ctx.fillStyle = colors.roadLine;
+        ctx.globalAlpha = t * 0.8;
+        for (let l = 1; l < 3; l++) {
+            let dx = cx - halfW + laneW * l;
+            ctx.fillRect(dx - 2, sy - 3 * t, 4, 12 * t);
         }
     }
     ctx.globalAlpha = 1;
 
-    // -- Sort all objects by Y for correct draw order --
-    let drawList = [];
+    // -- 4. Collect & Sort All Renderable Objects (Z-Sorting) --
+    let renderList = [];
 
+    // Obstacles
     for (let o of obstacles) {
-        if (o.y >= vanishY - 5 && o.y < h + 50) {
-            drawList.push({ type: 'obstacle', obj: o, y: o.y });
+        if (o.y >= vanishY - 10 && o.y < h + 120) {
+            renderList.push({ type: 'obstacle', obj: o, y: o.y });
         }
     }
+    // Coins
     for (let c of coins) {
-        if (!c.collected && c.y >= vanishY - 5 && c.y < h + 30) {
-            drawList.push({ type: 'coin', obj: c, y: c.y });
+        if (!c.collected && c.y >= vanishY - 10 && c.y < h + 60) {
+            renderList.push({ type: 'coin', obj: c, y: c.y });
         }
     }
+    // Powerups
     for (let p of powerups) {
-        if (!p.collected && p.y >= vanishY - 5 && p.y < h + 30) {
-            drawList.push({ type: 'powerup', obj: p, y: p.y });
+        if (!p.collected && p.y >= vanishY - 10 && p.y < h + 60) {
+            renderList.push({ type: 'powerup', obj: p, y: p.y });
         }
     }
+    // Rover
     if (rover.active && rover.leaping) {
-        drawList.push({ type: 'rover', obj: rover, y: rover.y });
+        renderList.push({ type: 'rover', obj: rover, y: rover.y });
     }
-    // Farmer Joe net
-    if (farmerJoe.netActive) {
-        drawList.push({ type: 'net', obj: farmerJoe, y: farmerJoe.netY });
-    }
-    // Helicopter drops
-    for (let d of helicopter.drops) {
-        drawList.push({ type: 'helidrop', obj: d, y: d.y });
-    }
-    // Player
-    drawList.push({ type: 'player', obj: player, y: player.y + player.jumpY });
+    // Player (Moo Moo)
+    renderList.push({ type: 'player', obj: player, y: player.y });
 
-    // Sort by Y ascending (further things drawn first)
-    drawList.sort((a, b) => a.y - b.y);
+    // Farmer Joe (always runs behind player)
+    if (farmerJoe.active) {
+        renderList.push({ type: 'farmer', obj: farmerJoe, y: farmerJoe.y });
+    }
 
-    for (let item of drawList) {
+    // Sort by Y ascending: furthest away drawn first
+    renderList.sort((a, b) => a.y - b.y);
+
+    // Draw sorted entities
+    for (let item of renderList) {
         switch(item.type) {
             case 'obstacle': drawObstacle(item.obj); break;
             case 'coin':     drawCoin(item.obj); break;
             case 'powerup':  drawPowerup(item.obj); break;
             case 'rover':    drawRover(); break;
-            case 'net':      drawFarmerNet(); break;
-            case 'helidrop': drawHeliDrop(item.obj); break;
-            case 'player':   drawPlayer(); break;
+            case 'player':   drawMooMoo(); break;
+            case 'farmer':   drawFarmerJoe(); break;
         }
     }
 
-    // -- Rover warning (above everything) --
+    // -- 5. Overhead Entities (Kiki, Helicopter, UI overlays) --
+    // Kiki the Pigeon flies above Moo Moo
+    drawKiki();
+
+    // Helicopter in the sky
+    if (helicopter.active) drawHelicopter(w, vanishY);
+
+    // Rover Warning Icon when preparing to leap
     if (rover.active && rover.warning) {
-        const rx = getLaneXAtY(rover.lane, h * 0.5);
+        const rx = getLaneXAtY(rover.lane, h * 0.52);
         ctx.fillStyle = COLORS.barnRed;
-        ctx.font = 'bold 28px sans-serif';
+        ctx.font = 'bold 24px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('⚠️ 🐕', rx, h * 0.45 + Math.sin(frameCount * 0.2) * 5);
+        ctx.fillText('⚠️ ROVER LEAPING! 🐕', rx, h * 0.48 + Math.sin(frameCount * 0.25) * 5);
     }
 
-    // -- Helicopter (drawn above scene) --
-    if (helicopter.active) drawHelicopter(w, h, vanishY);
+    // Flying Texts (+1, SMASH, etc)
+    for (let ft of flyingTexts) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, ft.alpha);
+        ctx.fillStyle = ft.color;
+        ctx.font = 'bold 16px "Fredoka One", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+    }
 
-    // -- Farmer Joe closeness indicator --
-    if (farmerJoe.active && farmerJoe.closeness > 10) drawFarmerJoeIndicator(w, h);
-
-    // -- Particles --
+    // Particles
     for (let p of particles) {
-        ctx.globalAlpha = p.life;
+        ctx.globalAlpha = Math.max(0, p.life);
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, Math.max(1, p.size * p.life), 0, Math.PI * 2);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
 
-    // -- Turbo effect --
+    // Turbo Speed Lines
     if (player.turboActive) {
         ctx.fillStyle = 'rgba(78, 192, 233, 0.08)';
         ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 2;
-        for (let i = 0; i < 6; i++) {
-            const sx = player.x + (Math.random() - 0.5) * 80;
-            const sy = player.y - Math.random() * h * 0.3;
-            ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + 30 + Math.random()*20); ctx.stroke();
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 8; i++) {
+            const sx = player.x + (Math.random() - 0.5) * 140;
+            const sy = player.y - Math.random() * h * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx, sy + 40 + Math.random() * 30);
+            ctx.stroke();
         }
     }
 
-    // Ambient
-    ctx.fillStyle = colors.ambient;
-    ctx.fillRect(0, 0, w, h);
+    // Danger Vignette when Farmer Joe is super close
+    if (farmerJoe.closeness > 65) {
+        const dangerAlpha = ((farmerJoe.closeness - 65) / 35) * 0.4;
+        ctx.fillStyle = `rgba(217, 56, 58, ${dangerAlpha})`;
+        ctx.fillRect(0, 0, w, h);
+    }
 }
 
-function drawHorizon(w, h, vanishY, biome) {
+// Scenery at horizon
+function drawHorizonScenery(w, h, vanishY, biome) {
     if (biome === 'barnyard') {
-        // Barn
+        // Red Barn
         ctx.fillStyle = COLORS.barnRed;
-        ctx.fillRect(w * 0.08, vanishY - 50, 60, 50);
+        ctx.fillRect(w * 0.1, vanishY - 60, 80, 60);
         ctx.fillStyle = '#8B0000';
         ctx.beginPath();
-        ctx.moveTo(w*0.08-3, vanishY-50); ctx.lineTo(w*0.08+30, vanishY-72); ctx.lineTo(w*0.08+63, vanishY-50);
+        ctx.moveTo(w * 0.1 - 4, vanishY - 60);
+        ctx.lineTo(w * 0.1 + 40, vanishY - 88);
+        ctx.lineTo(w * 0.1 + 84, vanishY - 60);
         ctx.fill();
+        // White X on barn door
+        ctx.strokeStyle = '#FFF'; ctx.lineWidth = 2;
+        ctx.strokeRect(w * 0.1 + 25, vanishY - 35, 30, 35);
+        ctx.beginPath(); ctx.moveTo(w*0.1+25, vanishY-35); ctx.lineTo(w*0.1+55, vanishY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(w*0.1+55, vanishY-35); ctx.lineTo(w*0.1+25, vanishY); ctx.stroke();
+
         // Silo
-        ctx.fillStyle = '#999';
-        ctx.fillRect(w*0.85, vanishY-55, 22, 55);
-        ctx.fillStyle = '#777';
-        ctx.beginPath(); ctx.arc(w*0.85+11, vanishY-55, 11, Math.PI, 0); ctx.fill();
-        // Trees
-        for (let i = 0; i < 5; i++) {
-            const tx = w*0.25 + i*w*0.12;
-            ctx.fillStyle = '#2E7D32';
-            ctx.beginPath(); ctx.arc(tx, vanishY-15, 14, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#5D4037';
-            ctx.fillRect(tx-2, vanishY-5, 4, 10);
+        ctx.fillStyle = '#94A3B8';
+        ctx.fillRect(w * 0.82, vanishY - 70, 26, 70);
+        ctx.fillStyle = '#64748B';
+        ctx.beginPath(); ctx.arc(w * 0.82 + 13, vanishY - 70, 13, Math.PI, 0); ctx.fill();
+
+        // Green rolling trees
+        for (let i = 0; i < 6; i++) {
+            const tx = w * 0.25 + i * w * 0.1;
+            ctx.fillStyle = '#15803D';
+            ctx.beginPath(); ctx.arc(tx, vanishY - 18, 16, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#4B2E1E';
+            ctx.fillRect(tx - 3, vanishY - 6, 6, 12);
         }
     } else if (biome === 'harvest') {
         // Windmill
-        const wmx = w * 0.12;
-        ctx.fillStyle = '#8D6E63';
-        ctx.fillRect(wmx-5, vanishY-55, 10, 55);
+        const wmx = w * 0.14;
+        ctx.fillStyle = '#78350F';
+        ctx.fillRect(wmx - 6, vanishY - 65, 12, 65);
         ctx.save();
-        ctx.translate(wmx, vanishY-55);
-        ctx.rotate(frameCount * 0.02);
-        ctx.fillStyle = '#A1887F';
-        for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI/2); ctx.fillRect(-2, 0, 4, 22); }
+        ctx.translate(wmx, vanishY - 65);
+        ctx.rotate(frameCount * 0.03);
+        ctx.fillStyle = '#B45309';
+        for (let i = 0; i < 4; i++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.fillRect(-3, 0, 6, 28);
+        }
         ctx.restore();
-        // Corn
-        for (let i = 0; i < 6; i++) {
-            ctx.fillStyle = '#F9C846';
-            ctx.fillRect(w*0.3 + i*w*0.08, vanishY - 10 - Math.random()*8, 2, 14);
+
+        // Golden cornfield stalks
+        for (let i = 0; i < 10; i++) {
+            const cx = w * 0.28 + i * w * 0.06;
+            ctx.fillStyle = COLORS.strawYellow;
+            ctx.fillRect(cx, vanishY - 14 - Math.sin(i)*6, 3, 20);
         }
     } else {
-        // Highway signs
-        ctx.fillStyle = '#666'; ctx.fillRect(w*0.1, vanishY-30, 3, 30);
-        ctx.fillStyle = '#2E7D32'; ctx.fillRect(w*0.1-15, vanishY-40, 36, 14);
-        ctx.fillStyle = '#FFF'; ctx.font = '7px sans-serif'; ctx.fillText('EXIT', w*0.1-8, vanishY-31);
-        // Guardrails
-        ctx.fillStyle = '#999';
-        for (let i = 0; i < 8; i++) ctx.fillRect(w*0.3+i*45, vanishY-3, 25, 2);
+        // Highway overhead gantry
+        ctx.fillStyle = '#64748B';
+        ctx.fillRect(w * 0.18, vanishY - 50, 6, 50);
+        ctx.fillRect(w * 0.78, vanishY - 50, 6, 50);
+        ctx.fillRect(w * 0.18, vanishY - 50, w * 0.6, 8);
+        ctx.fillStyle = '#16A34A';
+        ctx.fillRect(w * 0.38, vanishY - 48, 100, 24);
+        ctx.fillStyle = '#FFF';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText('WILDLIFE SANCTUARY ➔', w * 0.43, vanishY - 33);
     }
 }
+
+// ==========================================
+// DRAW CHARACTERS & ASSETS
+// ==========================================
+
+// 1. MOO MOO (Player Cow) - Expressive Cartoon Cow
+function drawMooMoo() {
+    const px = player.x;
+    const py = player.y + player.jumpY;
+    const isSliding = player.sliding;
+    const isTurbo = player.turboActive;
+    const legPhase = player.animFrame;
+
+    ctx.save();
+    ctx.translate(px, py);
+
+    // Moo Shockwave
+    if (player.mooTimer > 0) {
+        ctx.strokeStyle = `rgba(232, 169, 35, ${player.mooTimer / 45})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, -25, 45 + (45 - player.mooTimer) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // Turbo Aura & Speed Lines
+    if (isTurbo) {
+        ctx.fillStyle = 'rgba(78, 192, 233, 0.25)';
+        ctx.beginPath();
+        ctx.arc(0, -20, 52, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Milk Shield Bubble
+    if (player.hasShield) {
+        ctx.strokeStyle = 'rgba(78, 192, 233, 0.7)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, -20, 48, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // Shadow
+    const shadowScale = player.jumping ? Math.max(0.4, 1 - Math.abs(player.jumpY) / 120) : 1;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 20 - player.jumpY, 32 * shadowScale, 9 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Slide transformation
+    if (isSliding) {
+        ctx.translate(0, 16);
+        ctx.scale(1.3, 0.45);
+    }
+
+    const bounce = player.jumping ? 0 : Math.sin(legPhase * Math.PI) * 4;
+
+    // -- Cow Body --
+    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = '#27272A';
+    ctx.lineWidth = 2.5;
+
+    ctx.beginPath();
+    ctx.ellipse(0, -10 - bounce, 30, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Black Cow Patches (Organic spots)
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath();
+    ctx.ellipse(-12, -18 - bounce, 11, 8, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(14, -6 - bounce, 9, 8, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-8, 3 - bounce, 7, 6, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Swishing Tail
+    ctx.strokeStyle = '#18181B';
+    ctx.lineWidth = 3;
+    const tailWag = Math.sin(frameCount * 0.2) * 12;
+    ctx.beginPath();
+    ctx.moveTo(0, 6 - bounce);
+    ctx.quadraticCurveTo(tailWag, 2 - bounce, tailWag * 1.3, -12 - bounce);
+    ctx.stroke();
+    // Tail tuft
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath();
+    ctx.arc(tailWag * 1.3, -12 - bounce, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // -- Cow Head --
+    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = '#27272A';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, -36 - bounce, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Ears
+    const earFlap = Math.sin(frameCount * 0.18) * 3;
+    ctx.fillStyle = '#F4F4F5';
+    ctx.beginPath();
+    ctx.ellipse(-16, -46 - bounce + earFlap, 9, 6, -0.5, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(16, -46 - bounce - earFlap, 9, 6, 0.5, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Little Horns
+    ctx.fillStyle = '#FDE047';
+    ctx.strokeStyle = '#CA8A04';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-10, -52 - bounce); ctx.lineTo(-14, -64 - bounce); ctx.lineTo(-6, -53 - bounce); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10, -52 - bounce); ctx.lineTo(14, -64 - bounce); ctx.lineTo(6, -53 - bounce); ctx.fill(); ctx.stroke();
+
+    // Pink Cow Muzzle / Snout
+    ctx.fillStyle = '#FBCFE8';
+    ctx.strokeStyle = '#F472B6';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, -29 - bounce, 12, 8, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Nostrils
+    ctx.fillStyle = '#BE185D';
+    ctx.beginPath(); ctx.arc(-4, -28 - bounce, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(4, -28 - bounce, 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // Big Cartoon Eyes
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath(); ctx.arc(-8, -42 - bounce, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, -42 - bounce, 4, 0, Math.PI * 2); ctx.fill();
+    // Catchlight
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.arc(-6.5, -43.5 - bounce, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(9.5, -43.5 - bounce, 1.8, 0, Math.PI * 2); ctx.fill();
+
+    // Red Collar & Golden Bell
+    ctx.fillStyle = COLORS.barnRed;
+    ctx.fillRect(-12, -21 - bounce, 24, 4);
+    // Cowbell
+    ctx.fillStyle = COLORS.cowbellGold;
+    ctx.strokeStyle = '#B45309';
+    ctx.lineWidth = 1.5;
+    const bellSway = Math.sin(frameCount * 0.2) * 4;
+    ctx.beginPath();
+    ctx.arc(bellSway, -14 - bounce, 6, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // 4 Animated Running Legs
+    const fLeg = Math.sin(legPhase * Math.PI) * 9;
+    const bLeg = -fLeg;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = '#27272A';
+    ctx.lineWidth = 2;
+    // Front pair
+    ctx.fillRect(-14, 10 - bounce, 7, 16 + fLeg); ctx.strokeRect(-14, 10 - bounce, 7, 16 + fLeg);
+    ctx.fillRect(7, 10 - bounce, 7, 16 + bLeg); ctx.strokeRect(7, 10 - bounce, 7, 16 + bLeg);
+    // Black Hooves
+    ctx.fillStyle = '#18181B';
+    ctx.fillRect(-15, 24 - bounce + fLeg, 9, 4);
+    ctx.fillRect(6, 24 - bounce + bLeg, 9, 4);
+
+    // Special Skins
+    if (activeSkin === 'golden') {
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.45)';
+        ctx.beginPath(); ctx.ellipse(0, -10 - bounce, 30, 24, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (activeSkin === 'superhero') {
+        // Red superhero cape waving behind
+        ctx.fillStyle = COLORS.barnRed;
+        ctx.beginPath();
+        ctx.moveTo(-10, -20 - bounce);
+        ctx.lineTo(-26 + Math.sin(frameCount*0.3)*6, 14 - bounce);
+        ctx.lineTo(26 + Math.sin(frameCount*0.3)*6, 14 - bounce);
+        ctx.lineTo(10, -20 - bounce);
+        ctx.closePath();
+        ctx.fill();
+    } else if (activeSkin === 'wizard') {
+        // Purple Wizard Hat
+        ctx.fillStyle = '#6B21A8';
+        ctx.beginPath();
+        ctx.moveTo(0, -80 - bounce);
+        ctx.lineTo(-18, -50 - bounce);
+        ctx.lineTo(18, -50 - bounce);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = COLORS.cowbellGold;
+        ctx.beginPath(); ctx.arc(0, -62 - bounce, 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+// 2. FARMER JOE - Furious Pursuer running behind Moo Moo
+function drawFarmerJoe() {
+    const fx = farmerJoe.x;
+    const fy = farmerJoe.y;
+    const isThrowing = farmerJoe.throwing;
+    const isStunned = farmerJoe.stunnedTimer > 0;
+    const runCycle = Math.sin(frameCount * 0.28) * 8;
+
+    ctx.save();
+    ctx.translate(fx, fy);
+
+    // Closeness indicator label
+    ctx.fillStyle = farmerJoe.closeness > 75 ? COLORS.barnRed : '#FFFFFF';
+    ctx.font = 'bold 13px "Fredoka One", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`👨‍🌾 Farmer Joe (${Math.floor(farmerJoe.closeness)}%)`, 0, -68);
+
+    // Speech bubble from Farmer Joe
+    if (farmerJoe.shoutTimer > 0 && farmerJoe.shoutText) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.strokeStyle = '#18181B';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(-80, -105, 160, 28, 8);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#18181B';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(farmerJoe.shoutText, 0, -87);
+    }
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 26, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (isStunned) {
+        // Dizzy stars
+        ctx.font = '16px sans-serif';
+        ctx.fillText('💫 ⭐ 💫', 0, -60);
+        ctx.rotate(Math.sin(frameCount * 0.4) * 0.15);
+    }
+
+    // Farmer Boots & Running Legs
+    ctx.fillStyle = '#1D4ED8'; // Denim blue overalls legs
+    ctx.fillRect(-12, 0, 8, 16 + runCycle);
+    ctx.fillRect(4, 0, 8, 16 - runCycle);
+    ctx.fillStyle = '#78350F'; // Brown workboots
+    ctx.fillRect(-14, 14 + runCycle, 11, 6);
+    ctx.fillRect(3, 14 - runCycle, 11, 6);
+
+    // Overalls Torso
+    ctx.fillStyle = COLORS.barnRed; // Red flannel shirt
+    ctx.fillRect(-15, -28, 30, 20);
+    // Blue dungaree bib
+    ctx.fillStyle = '#1D4ED8';
+    ctx.fillRect(-11, -22, 22, 22);
+    // Yellow brass buckles
+    ctx.fillStyle = '#FDE047';
+    ctx.beginPath(); ctx.arc(-8, -20, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, -20, 2.5, 0, Math.PI*2); ctx.fill();
+
+    // Farmer Head
+    ctx.fillStyle = '#FED7AA'; // Skin
+    ctx.beginPath(); ctx.arc(0, -38, 12, 0, Math.PI * 2); ctx.fill();
+
+    // Angry Eyebrows & Eyes
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath(); ctx.arc(-4, -40, 2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(4, -40, 2, 0, Math.PI*2); ctx.fill();
+    // Bushy Mustache
+    ctx.fillStyle = '#78350F';
+    ctx.beginPath(); ctx.ellipse(0, -34, 8, 4, 0, 0, Math.PI*2); ctx.fill();
+
+    // Straw Hat
+    ctx.fillStyle = '#FDE047';
+    ctx.strokeStyle = '#CA8A04';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0, -46, 22, 7, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillRect(-12, -58, 24, 14); ctx.strokeRect(-12, -58, 24, 14);
+    // Red hat ribbon
+    ctx.fillStyle = COLORS.barnRed;
+    ctx.fillRect(-12, -49, 24, 4);
+
+    // Long Pole with Butterfly / Catching Net
+    ctx.save();
+    const netSwing = isThrowing ? -0.8 : Math.sin(frameCount * 0.2) * 0.2;
+    ctx.translate(14, -20);
+    ctx.rotate(netSwing);
+    // Wooden pole
+    ctx.fillStyle = '#92400E';
+    ctx.fillRect(0, -35, 4, 45);
+    // Net rim
+    ctx.strokeStyle = '#D97706';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(2, -38, 15, 0, Math.PI * 2);
+    ctx.stroke();
+    // Mesh net
+    ctx.fillStyle = 'rgba(254, 243, 199, 0.4)';
+    ctx.beginPath();
+    ctx.arc(2, -38, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+}
+
+// 3. ROVER THE DOG - Herding Sheepdog
+function drawRover() {
+    const rx = rover.x;
+    const ry = rover.y;
+    const scale = Math.max(0.4, getScaleAtY(ry) * 1.5);
+    const runCycle = Math.sin(frameCount * 0.4) * 6;
+
+    ctx.save();
+    ctx.translate(rx, ry);
+    ctx.scale(scale, scale);
+
+    // Bark bubble
+    if (rover.barkTimer > 0 && rover.barkText) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.strokeStyle = '#18181B';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(-45, -55, 90, 24, 6);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#18181B';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(rover.barkText, 0, -39);
+    }
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath(); ctx.ellipse(0, 16, 20, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Dog Body (Brown and White Border Collie)
+    ctx.fillStyle = '#78350F';
+    ctx.beginPath(); ctx.ellipse(0, 0, 20, 13, 0, 0, Math.PI * 2); ctx.fill();
+    // White chest
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.ellipse(6, 2, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Animated Running Legs
+    ctx.fillStyle = '#78350F';
+    ctx.fillRect(-14, 8, 5, 10 + runCycle);
+    ctx.fillRect(8, 8, 5, 10 - runCycle);
+
+    // Wagging Tail
+    const tailWag = Math.sin(frameCount * 0.5) * 8;
+    ctx.strokeStyle = '#78350F'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-28, -6 + tailWag); ctx.stroke();
+
+    // Dog Head
+    ctx.fillStyle = '#78350F';
+    ctx.beginPath(); ctx.arc(14, -10, 11, 0, Math.PI * 2); ctx.fill();
+    // White snout
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.ellipse(20, -7, 6, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+    // Black nose
+    ctx.fillStyle = '#18181B';
+    ctx.beginPath(); ctx.arc(24, -8, 2.5, 0, Math.PI * 2); ctx.fill();
+    // Floppy Ear
+    ctx.fillStyle = '#451A03';
+    ctx.beginPath(); ctx.ellipse(10, -16, 5, 8, 0.3, 0, Math.PI * 2); ctx.fill();
+    // Red Collar
+    ctx.fillStyle = COLORS.barnRed;
+    ctx.fillRect(8, -4, 4, 8);
+
+    ctx.restore();
+}
+
+// 4. KIKI THE PIGEON - Animated Guide NPC flying above Moo Moo
+function drawKiki() {
+    const kx = kiki.x;
+    const ky = kiki.y;
+    const wingAngle = kiki.wingAngle;
+
+    ctx.save();
+    ctx.translate(kx, ky);
+
+    // Kiki Speech Bubble (When giving tips)
+    if (kiki.tipTimer > 0 && kiki.tipText) {
+        ctx.font = 'bold 13px "Fredoka One", sans-serif';
+        const textW = ctx.measureText(kiki.tipText).width;
+        const boxW = Math.max(160, textW + 28);
+        const boxH = 34;
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeStyle = '#38BDF8';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(-boxW / 2, -55, boxW, boxH, 12);
+        ctx.fill(); ctx.stroke();
+
+        // Speech bubble pointer tail
+        ctx.beginPath();
+        ctx.moveTo(-6, -21); ctx.lineTo(0, -12); ctx.lineTo(6, -21);
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = '#0F172A';
+        ctx.textAlign = 'center';
+        ctx.fillText(kiki.tipText, 0, -33);
+    }
+
+    // Shadow on ground
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.beginPath();
+    ctx.ellipse(0, 85, 12, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pigeon Body (Grey and White)
+    ctx.fillStyle = '#64748B'; // slate grey
+    ctx.beginPath(); ctx.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Iridescent Neck (Emerald Green)
+    ctx.fillStyle = '#10B981';
+    ctx.beginPath(); ctx.ellipse(6, -4, 6, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Pigeon Head
+    ctx.fillStyle = '#64748B';
+    ctx.beginPath(); ctx.arc(12, -7, 7, 0, Math.PI * 2); ctx.fill();
+    // Eye
+    ctx.fillStyle = '#F97316'; // Orange eye
+    ctx.beginPath(); ctx.arc(13.5, -8.5, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.beginPath(); ctx.arc(14, -8.5, 1.2, 0, Math.PI * 2); ctx.fill();
+    // Beak
+    ctx.fillStyle = '#FBBF24';
+    ctx.beginPath(); ctx.moveTo(17, -8); ctx.lineTo(23, -6); ctx.lineTo(17, -4); ctx.fill();
+
+    // Flapping Wings
+    ctx.save();
+    ctx.translate(-2, -4);
+    ctx.rotate(wingAngle);
+    ctx.fillStyle = '#94A3B8';
+    ctx.beginPath(); ctx.ellipse(0, -8, 7, 14, -0.2, 0, Math.PI * 2); ctx.fill();
+    // White wing bars
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(4, -6); ctx.stroke();
+    ctx.restore();
+
+    // Pink Feet
+    ctx.fillStyle = '#FB7185';
+    ctx.fillRect(-2, 7, 2, 4); ctx.fillRect(4, 7, 2, 4);
+
+    ctx.restore();
+}
+
+// 5. FARM HELICOPTER (Boss)
+function drawHelicopter(w, vanishY) {
+    const hx = helicopter.x;
+    const hy = vanishY - 55;
+
+    ctx.save();
+    // Searchlight Beam sweeping the road
+    const lightAngle = Math.sin(frameCount * 0.05) * 40;
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.12)';
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 15);
+    ctx.lineTo(hx - 80 + lightAngle, H());
+    ctx.lineTo(hx + 80 + lightAngle, H());
+    ctx.closePath();
+    ctx.fill();
+
+    // Helicopter Body
+    ctx.fillStyle = '#1E293B';
+    ctx.beginPath(); ctx.ellipse(hx, hy, 36, 18, 0, 0, Math.PI * 2); ctx.fill();
+    // Glass Cockpit
+    ctx.fillStyle = '#38BDF8';
+    ctx.beginPath(); ctx.ellipse(hx - 12, hy - 2, 14, 10, 0, Math.PI, 0); ctx.fill();
+    // Tail boom
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(hx + 24, hy - 5, 34, 9);
+    ctx.fillRect(hx + 54, hy - 18, 6, 22);
+
+    // Spinning Rotor Blades
+    const rotor = frameCount * 0.45;
+    ctx.strokeStyle = '#94A3B8';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(hx - Math.cos(rotor) * 48, hy - 20);
+    ctx.lineTo(hx + Math.cos(rotor) * 48, hy - 20);
+    ctx.stroke();
+
+    // Warning text
+    ctx.fillStyle = COLORS.barnRed;
+    ctx.font = 'bold 12px "Fredoka One", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🚁 FARM POLICE', hx, hy - 28);
+
+    ctx.restore();
+}
+
+// ==========================================
+// DRAW LARGE, BOLD OBSTACLES (Proper Lane Scaling!)
+// ==========================================
 
 function drawObstacle(o) {
     const scale = getScaleAtY(o.y);
     const x = getLaneXAtY(o.lane, o.y);
     const y = o.y;
+    const laneW = getLaneWidthAtY(y);
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.scale(scale, scale);
 
     switch(o.type) {
-        case 'fence':
-            ctx.fillStyle = '#8B6914';
-            ctx.fillRect(-25, -15, 50, 6); ctx.fillRect(-25, -3, 50, 6);
-            ctx.fillStyle = '#A0875A';
-            ctx.fillRect(-22, -20, 5, 35); ctx.fillRect(17, -20, 5, 35); ctx.fillRect(-2, -20, 5, 35);
+        case 'fence': {
+            // Big Wooden Picket Fence (Jumpable) - Spans 85% of lane width!
+            const w = laneW * 0.85;
+            const h = 48 * scale;
+
+            // Horizontal timber rails
+            ctx.fillStyle = '#92400E';
+            ctx.fillRect(-w / 2, -h * 0.4, w, 8 * scale);
+            ctx.fillRect(-w / 2, h * 0.1, w, 8 * scale);
+
+            // Vertical pointed pickets (5 pickets across lane)
+            const pickets = 5;
+            for (let i = 0; i < pickets; i++) {
+                const px = -w / 2 + (w / (pickets - 1)) * i;
+                const pw = 10 * scale;
+                ctx.fillStyle = '#B45309';
+                ctx.fillRect(px - pw / 2, -h * 0.7, pw, h);
+                // Pointed top
+                ctx.beginPath();
+                ctx.moveTo(px - pw / 2, -h * 0.7);
+                ctx.lineTo(px, -h * 0.95);
+                ctx.lineTo(px + pw / 2, -h * 0.7);
+                ctx.fill();
+            }
+
+            // "JUMP ⬆️" badge on fence
+            if (scale > 0.45) {
+                ctx.fillStyle = '#FEF08A';
+                ctx.font = `bold ${Math.floor(11 * scale * 2)}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.fillText('JUMP ⬆️', 0, -h * 0.85);
+            }
             break;
-        case 'haybale':
-            ctx.fillStyle = '#DAA520';
-            ctx.beginPath(); ctx.ellipse(0, 0, 25, 18, 0, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = '#B8860B'; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.ellipse(0, 0, 25, 18, 0, 0, Math.PI*2); ctx.stroke();
-            ctx.strokeStyle = '#CD950C';
-            for (let i = -18; i < 18; i += 6) { ctx.beginPath(); ctx.moveTo(i, -12); ctx.lineTo(i, 12); ctx.stroke(); }
+        }
+
+        case 'haybale': {
+            // Large Golden Hay Bale Roll (Jumpable) - 78% of lane
+            const r = laneW * 0.38;
+            ctx.fillStyle = '#EAB308';
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#CA8A04'; ctx.lineWidth = 3 * scale;
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+
+            // Inner twine rings
+            ctx.strokeStyle = '#78350F'; ctx.lineWidth = 2 * scale;
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2); ctx.stroke();
+
+            // Straw strands
+            for (let i = -r * 0.7; i < r * 0.7; i += 8 * scale) {
+                ctx.beginPath(); ctx.moveTo(i, -r * 0.8); ctx.lineTo(i, r * 0.8); ctx.stroke();
+            }
             break;
-        case 'barrier':
-            ctx.fillStyle = '#D9383A';
-            ctx.fillRect(-25, -20, 50, 12);
-            ctx.fillStyle = '#FFF';
-            for (let i = 0; i < 4; i++) ctx.fillRect(-22+i*14, -18, 8, 8);
-            ctx.fillStyle = '#888';
-            ctx.fillRect(-22, -8, 5, 30); ctx.fillRect(17, -8, 5, 30);
+        }
+
+        case 'barrier': {
+            // Farm Low Clearance Gantry: MUST SLIDE UNDER! - 92% of lane
+            const w = laneW * 0.92;
+            const h = 75 * scale;
+
+            // Two tall wooden side posts
+            ctx.fillStyle = '#78350F';
+            ctx.fillRect(-w / 2, -h, 12 * scale, h + 15 * scale);
+            ctx.fillRect(w / 2 - 12 * scale, -h, 12 * scale, h + 15 * scale);
+
+            // Overhead clearance crossbeam
+            ctx.fillStyle = '#991B1B';
+            ctx.fillRect(-w / 2, -h, w, 22 * scale);
+
+            // Red & White warning caution stripes
+            ctx.fillStyle = '#FFFFFF';
+            const stripes = 6;
+            for (let i = 0; i < stripes; i++) {
+                ctx.fillRect(-w / 2 + (w / stripes) * i + 4, -h + 2, (w / stripes) * 0.45, 18 * scale);
+            }
+
+            // Big "SLIDE ⬇️" clearance text
+            if (scale > 0.45) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = `bold ${Math.floor(12 * scale * 2)}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.fillText('SLIDE ⬇️', 0, -h + 15 * scale);
+            }
             break;
-        case 'tractor':
-            ctx.fillStyle = '#D9383A'; ctx.fillRect(-22, -14, 44, 28);
-            ctx.fillStyle = '#B71C1C'; ctx.fillRect(-15, -28, 20, 18);
-            ctx.fillStyle = '#81D4FA'; ctx.fillRect(-12, -25, 14, 10);
-            ctx.fillStyle = '#333';
-            ctx.beginPath(); ctx.arc(-15, 16, 10, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(15, 16, 14, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#888';
-            ctx.beginPath(); ctx.arc(-15, 16, 4, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(15, 16, 5, 0, Math.PI*2); ctx.fill();
+        }
+
+        case 'tractor': {
+            // Big Bold Red Farm Tractor (Cannot jump, MUST DODGE!) - 85% of lane
+            const w = laneW * 0.85;
+            const h = 60 * scale;
+
+            // Massive Black Rear Mud Tires with deep treads
+            ctx.fillStyle = '#18181B';
+            ctx.beginPath(); ctx.arc(-w * 0.38, h * 0.2, 22 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.38, h * 0.2, 22 * scale, 0, Math.PI * 2); ctx.fill();
+            // Yellow hubcaps
+            ctx.fillStyle = '#FDE047';
+            ctx.beginPath(); ctx.arc(-w * 0.38, h * 0.2, 8 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.38, h * 0.2, 8 * scale, 0, Math.PI * 2); ctx.fill();
+
+            // Main Red Tractor Body
+            ctx.fillStyle = COLORS.barnRed;
+            ctx.fillRect(-w * 0.42, -h * 0.4, w * 0.84, h * 0.65);
+
+            // Cab & Windshield
+            ctx.fillStyle = '#991B1B';
+            ctx.fillRect(-w * 0.25, -h * 0.9, w * 0.5, h * 0.55);
+            ctx.fillStyle = '#7DD3FC'; // Bright blue glass
+            ctx.fillRect(-w * 0.2, -h * 0.85, w * 0.4, h * 0.35);
+
+            // Front Yellow Headlights
+            ctx.fillStyle = '#FEF08A';
+            ctx.beginPath(); ctx.arc(-w * 0.28, -h * 0.1, 7 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.28, -h * 0.1, 7 * scale, 0, Math.PI * 2); ctx.fill();
+
+            // Vertical Exhaust Pipe puffing smoke
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(w * 0.18, -h * 1.15, 6 * scale, h * 0.4);
+            // Smoke puff
+            ctx.fillStyle = 'rgba(203, 213, 225, 0.6)';
+            ctx.beginPath(); ctx.arc(w * 0.2 + Math.sin(frameCount*0.2)*4, -h * 1.25, 8 * scale, 0, Math.PI*2); ctx.fill();
             break;
-        case 'truck':
-            ctx.fillStyle = '#1565C0'; ctx.fillRect(-25, -22, 50, 35);
-            ctx.fillStyle = '#0D47A1'; ctx.fillRect(-25, 13, 20, 20);
-            ctx.fillStyle = '#B3E5FC'; ctx.fillRect(-22, 15, 14, 10);
-            ctx.fillStyle = '#222';
-            ctx.beginPath(); ctx.arc(-18, 36, 8, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(15, 36, 8, 0, Math.PI*2); ctx.fill();
+        }
+
+        case 'truck': {
+            // Big Blue Highway Delivery Truck - 85% of lane
+            const w = laneW * 0.85;
+            const h = 70 * scale;
+
+            ctx.fillStyle = '#1D4ED8';
+            ctx.fillRect(-w / 2, -h * 0.7, w, h);
+            ctx.fillStyle = '#60A5FA';
+            ctx.fillRect(-w * 0.4, -h * 0.6, w * 0.8, h * 0.35);
+            ctx.fillStyle = '#FEF08A';
+            ctx.fillRect(-w * 0.4, h * 0.15, 12 * scale, 8 * scale);
+            ctx.fillRect(w * 0.4 - 12 * scale, h * 0.15, 12 * scale, 8 * scale);
             break;
-        case 'mud':
-            ctx.fillStyle = 'rgba(107, 66, 38, 0.7)';
-            ctx.beginPath(); ctx.ellipse(0, 0, 28, 10, 0, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = 'rgba(80, 50, 20, 0.5)';
-            ctx.beginPath(); ctx.arc(-8, -3, 4, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(10, 2, 3, 0, Math.PI*2); ctx.fill();
+        }
+
+        case 'mud': {
+            // Mud Puddle (Stumble Trap) - 80% of lane
+            const w = laneW * 0.8;
+            ctx.fillStyle = 'rgba(107, 66, 38, 0.82)';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w / 2, 14 * scale, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Mud bubbles & splashes
+            ctx.fillStyle = 'rgba(67, 40, 20, 0.6)';
+            ctx.beginPath(); ctx.arc(-w * 0.2, -3 * scale, 5 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.25, 2 * scale, 4 * scale, 0, Math.PI * 2); ctx.fill();
             break;
+        }
     }
+
     ctx.restore();
 }
 
+// 6. COINS (Large, Radiant, Glowing)
 function drawCoin(c) {
     const scale = getScaleAtY(c.y);
     const x = getLaneXAtY(c.lane, c.y);
-    const size = c.baseSize * scale;
+    const y = c.y - (c.airborne ? 35 * scale : 0);
+    const radius = 18 * Math.max(0.4, scale);
     const glow = Math.sin(c.sparkle) * 0.3 + 0.7;
 
     ctx.save();
-    ctx.globalAlpha = glow * Math.min(1, scale * 2);
+    ctx.translate(x, y);
+    ctx.globalAlpha = glow;
 
-    ctx.fillStyle = 'rgba(249, 200, 70, 0.3)';
-    ctx.beginPath(); ctx.arc(x, c.y, size + 3, 0, Math.PI*2); ctx.fill();
+    // Golden Halo
+    ctx.fillStyle = 'rgba(253, 224, 71, 0.35)';
+    ctx.beginPath(); ctx.arc(0, 0, radius + 6 * scale, 0, Math.PI * 2); ctx.fill();
 
+    // Coin Disc
     ctx.fillStyle = COLORS.strawYellow;
-    ctx.beginPath(); ctx.arc(x, c.y, size, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = COLORS.cowbellGold;
+    ctx.lineWidth = 2.5 * scale;
+    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
-    ctx.strokeStyle = COLORS.cowbellGold; ctx.lineWidth = Math.max(1, 2*scale);
-    ctx.beginPath(); ctx.arc(x, c.y, size - 3*scale, 0, Math.PI*2); ctx.stroke();
+    // Inner Ring
+    ctx.strokeStyle = '#D97706';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath(); ctx.arc(0, 0, radius * 0.68, 0, Math.PI * 2); ctx.stroke();
 
+    // Cow Face / Milk Cent Logo
     if (scale > 0.4) {
-        ctx.fillStyle = COLORS.cowbellGold;
-        ctx.font = `bold ${Math.floor(12*scale)}px sans-serif`;
+        ctx.fillStyle = '#92400E';
+        ctx.font = `bold ${Math.floor(13 * scale * 1.5)}px sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('¢', x, c.y);
+        ctx.fillText('¢', 0, 0);
     }
 
-    ctx.globalAlpha = 1;
     ctx.restore();
 }
 
+// 7. POWER-UPS (Turbo Milk, Coin Magnet, Milk Shield)
 function drawPowerup(p) {
     const scale = getScaleAtY(p.y);
     const x = getLaneXAtY(p.lane, p.y);
-    const size = p.baseSize * scale;
-    const glow = Math.sin(p.glow * 2) * 4 + 6;
+    const y = p.y;
+    const r = 26 * Math.max(0.4, scale);
 
     ctx.save();
-    ctx.globalAlpha = Math.min(1, scale * 2.5);
+    ctx.translate(x, y);
 
-    ctx.strokeStyle = p.type === 'turbo' ? '#4EC0E9' : p.type === 'magnet' ? '#E8A923' : '#7CBC37';
-    ctx.lineWidth = Math.max(1, 2*scale);
-    ctx.beginPath(); ctx.arc(x, p.y, size + glow*scale, 0, Math.PI*2); ctx.stroke();
+    const glowColor = p.type === 'turbo' ? COLORS.skyBlue : p.type === 'magnet' ? COLORS.cowbellGold : '#FFFFFF';
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = 3 * scale;
+    ctx.beginPath(); ctx.arc(0, 0, r + Math.sin(p.glow) * 4 * scale, 0, Math.PI * 2); ctx.stroke();
 
-    ctx.fillStyle = p.type === 'turbo' ? 'rgba(78,192,233,0.5)' : p.type === 'magnet' ? 'rgba(232,169,35,0.5)' : 'rgba(124,188,55,0.5)';
-    ctx.beginPath(); ctx.arc(x, p.y, size, 0, Math.PI*2); ctx.fill();
+    // Background circle
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
 
-    if (scale > 0.35) {
-        ctx.font = `${Math.floor(18*scale)}px sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(p.type === 'turbo' ? '🥛' : p.type === 'magnet' ? '🧲' : '🛡️', x, p.y);
-    }
-
-    ctx.globalAlpha = 1;
-    ctx.restore();
-}
-
-function drawPlayer() {
-    const px = player.x;
-    const py = player.y + player.jumpY;
-    const sliding = player.sliding;
-    const stumble = player.stumbleTimer > 0;
-
-    ctx.save();
-    ctx.translate(px, py);
-
-    // Turbo aura
-    if (player.turboActive) {
-        ctx.fillStyle = 'rgba(78, 192, 233, 0.2)';
-        ctx.beginPath(); ctx.arc(0, -10, 40, 0, Math.PI*2); ctx.fill();
-    }
-    // Shield bubble
-    if (player.hasShield) {
-        ctx.strokeStyle = 'rgba(78, 192, 233, 0.5)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(0, -10, 38, 0, Math.PI*2); ctx.stroke();
-    }
-
-    if (stumble) ctx.rotate(Math.sin(frameCount * 0.5) * 0.1);
-    if (sliding) { ctx.translate(0, 20); ctx.scale(1.3, 0.5); }
-
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath(); ctx.ellipse(0, 20, 22, 6, 0, 0, Math.PI*2); ctx.fill();
-
-    const bounce = player.jumping ? 0 : Math.sin(player.animFrame * Math.PI / 2) * 3;
-
-    // Body
-    ctx.fillStyle = '#FFF';
-    ctx.beginPath(); ctx.ellipse(0, -5-bounce, 22, 18, 0, 0, Math.PI*2); ctx.fill();
-
-    // Black patches
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.ellipse(-8, -12-bounce, 8, 6, -0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(10, 0-bounce, 6, 5, 0.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-5, 5-bounce, 5, 4, 0, 0, Math.PI*2); ctx.fill();
-
-    // Head
-    ctx.fillStyle = '#FFF';
-    ctx.beginPath(); ctx.arc(0, -28-bounce, 14, 0, Math.PI*2); ctx.fill();
-
-    // Snout
-    ctx.fillStyle = '#FFCCAA';
-    ctx.beginPath(); ctx.ellipse(0, -22-bounce, 8, 5, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#D4956A';
-    ctx.beginPath(); ctx.arc(-3, -21-bounce, 2, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(3, -21-bounce, 2, 0, Math.PI*2); ctx.fill();
-
-    // Eyes
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(-6, -32-bounce, 3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(6, -32-bounce, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#FFF';
-    ctx.beginPath(); ctx.arc(-5, -33-bounce, 1.2, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(7, -33-bounce, 1.2, 0, Math.PI*2); ctx.fill();
-
-    // Ears
-    ctx.fillStyle = '#EEE';
-    ctx.beginPath(); ctx.ellipse(-12, -36-bounce, 6, 4, -0.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(12, -36-bounce, 6, 4, 0.5, 0, Math.PI*2); ctx.fill();
-
-    // Horns
-    ctx.fillStyle = '#F5DEB3';
-    ctx.beginPath(); ctx.moveTo(-8, -40-bounce); ctx.lineTo(-12, -50-bounce); ctx.lineTo(-5, -42-bounce); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(8, -40-bounce); ctx.lineTo(12, -50-bounce); ctx.lineTo(5, -42-bounce); ctx.fill();
-
-    // Bell collar
-    ctx.fillStyle = '#D9383A'; ctx.fillRect(-8, -16-bounce, 16, 3);
-    ctx.fillStyle = COLORS.cowbellGold;
-    ctx.beginPath(); ctx.arc(0, -12-bounce, 4, 0, Math.PI*2); ctx.fill();
-
-    // Legs
-    ctx.fillStyle = '#FFF';
-    const legPhase = player.animFrame;
-    const frontLeg = Math.sin(legPhase * Math.PI / 2) * 6;
-    const backLeg = -frontLeg;
-    ctx.fillRect(-10, 12-bounce, 5, 12+frontLeg);
-    ctx.fillRect(5, 12-bounce, 5, 12+backLeg);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(-11, 23-bounce+frontLeg, 7, 3);
-    ctx.fillRect(4, 23-bounce+backLeg, 7, 3);
-
-    // Tail
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, 8-bounce);
-    ctx.quadraticCurveTo(18, 5-bounce+Math.sin(frameCount*0.1)*5, 20, -5-bounce);
-    ctx.stroke();
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(20, -5-bounce, 3, 0, Math.PI*2); ctx.fill();
-
-    // Skin overlays
-    if (activeSkin === 'golden') {
-        ctx.globalAlpha = 0.3; ctx.fillStyle = '#FFD700';
-        ctx.beginPath(); ctx.ellipse(0, -5-bounce, 22, 18, 0, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha = 1;
-    } else if (activeSkin === 'superhero') {
-        ctx.fillStyle = '#D9383A';
-        ctx.beginPath(); ctx.moveTo(-8,-15-bounce); ctx.lineTo(-15,15-bounce); ctx.lineTo(15,15-bounce); ctx.lineTo(8,-15-bounce); ctx.fill();
-    } else if (activeSkin === 'wizard') {
-        ctx.fillStyle = '#4A148C';
-        ctx.beginPath(); ctx.moveTo(0,-58-bounce); ctx.lineTo(-14,-36-bounce); ctx.lineTo(14,-36-bounce); ctx.fill();
-        ctx.fillStyle = COLORS.cowbellGold;
-        ctx.beginPath(); ctx.arc(0,-45-bounce,3,0,Math.PI*2); ctx.fill();
-    }
+    // Large Emoji Icon
+    ctx.font = `${Math.floor(22 * Math.max(0.45, scale))}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.type === 'turbo' ? '🥛' : p.type === 'magnet' ? '🧲' : '🛡️', 0, 0);
 
     ctx.restore();
 }
 
-function drawRover() {
-    const scale = getScaleAtY(rover.y);
-    const rx = getLaneXAtY(rover.lane, rover.y);
+// ==========================================
+// SCREEN FLOW & UI
+// ==========================================
 
-    ctx.save();
-    ctx.translate(rx, rover.y);
-    ctx.scale(scale, scale);
-
-    // Dog body
-    ctx.fillStyle = '#8B4513';
-    ctx.beginPath(); ctx.ellipse(0, 0, 18, 12, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#A0522D';
-    ctx.beginPath(); ctx.arc(0, -16, 10, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#6B3410';
-    ctx.beginPath(); ctx.ellipse(-8, -22, 5, 7, -0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(8, -22, 5, 7, 0.3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#FFF';
-    ctx.beginPath(); ctx.arc(-4, -18, 3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(4, -18, 3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(-4, -18, 1.5, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(4, -18, 1.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(0, -12, 2.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#8B4513';
-    ctx.fillRect(-12, 10, 4, 10); ctx.fillRect(8, 10, 4, 10);
-
-    ctx.restore();
-}
-
-function drawFarmerNet() {
-    const netX = getLaneXAtY(farmerJoe.netLane, farmerJoe.netY);
-    const scale = getScaleAtY(farmerJoe.netY);
-
-    ctx.save();
-    ctx.translate(netX, farmerJoe.netY);
-    ctx.scale(scale, scale);
-
-    ctx.fillStyle = 'rgba(139, 69, 19, 0.8)';
-    ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#654321'; ctx.lineWidth = 2;
-    for (let i = -12; i <= 12; i += 6) {
-        ctx.beginPath(); ctx.moveTo(i, -15); ctx.lineTo(i, 15); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-15, i); ctx.lineTo(15, i); ctx.stroke();
-    }
-
-    ctx.restore();
-}
-
-function drawHeliDrop(d) {
-    const dx = getLaneXAtY(d.lane, d.y);
-    const scale = getScaleAtY(d.y);
-
-    ctx.save();
-    ctx.translate(dx, d.y);
-    ctx.scale(scale, scale);
-
-    ctx.fillStyle = 'rgba(100, 50, 0, 0.7)';
-    ctx.strokeStyle = '#654321'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = 'rgba(100, 70, 30, 0.6)';
-    for (let i = -15; i <= 15; i += 5) {
-        ctx.beginPath(); ctx.moveTo(i, -18); ctx.lineTo(i, 18); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-18, i); ctx.lineTo(18, i); ctx.stroke();
-    }
-
-    ctx.restore();
-}
-
-function drawHelicopter(w, h, vanishY) {
-    const hx = helicopter.x;
-    const hy = vanishY - 40;
-
-    ctx.save();
-    // Spotlight
-    ctx.fillStyle = `rgba(255, 255, 200, ${helicopter.spotlightOpacity})`;
-    ctx.beginPath();
-    ctx.moveTo(hx - 8, hy + 15); ctx.lineTo(hx - 40, h); ctx.lineTo(hx + 40, h); ctx.lineTo(hx + 8, hy + 15);
-    ctx.fill();
-
-    // Body
-    ctx.fillStyle = '#37474F';
-    ctx.beginPath(); ctx.ellipse(hx, hy, 25, 12, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#455A64';
-    ctx.fillRect(hx+16, hy-4, 22, 6); ctx.fillRect(hx+34, hy-12, 4, 14);
-    ctx.fillStyle = '#B3E5FC';
-    ctx.beginPath(); ctx.ellipse(hx-8, hy-2, 10, 7, 0, Math.PI, 0); ctx.fill();
-    // Rotor
-    ctx.strokeStyle = '#666'; ctx.lineWidth = 3;
-    const ra = frameCount * 0.3;
-    ctx.beginPath(); ctx.moveTo(hx-Math.cos(ra)*30, hy-13); ctx.lineTo(hx+Math.cos(ra)*30, hy-13); ctx.stroke();
-    ctx.fillStyle = '#555';
-    ctx.beginPath(); ctx.arc(hx, hy-13, 3, 0, Math.PI*2); ctx.fill();
-
-    ctx.restore();
-}
-
-function drawFarmerJoeIndicator(w, h) {
-    const closeness = farmerJoe.closeness;
-    const alpha = Math.min(closeness / 100, 0.8);
-
-    ctx.fillStyle = `rgba(217, 56, 58, ${alpha * 0.3})`;
-    ctx.fillRect(0, h - 60, w, 60);
-    ctx.fillStyle = `rgba(255,255,255, ${alpha})`;
-    ctx.font = '13px Fredoka One, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`👨‍🌾 Farmer Joe is close! (${Math.floor(closeness)}%)`, w/2, h-32);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.fillRect(w/2-70, h-20, 140, 8);
-    ctx.fillStyle = closeness > 70 ? '#D9383A' : '#E8A923';
-    ctx.fillRect(w/2-70, h-20, 140*(closeness/100), 8);
-}
-
-// ---- Kiki Tips ----
-function showKikiTip(text) {
-    const tipEl = document.getElementById('kikiTip');
-    const textEl = document.getElementById('kikiText');
-    textEl.textContent = text;
-    tipEl.style.display = 'flex';
-    tipEl.style.animation = 'none';
-    tipEl.offsetHeight;
-    tipEl.style.animation = 'tipSlide 0.3s ease-out';
-    setTimeout(() => { tipEl.style.display = 'none'; }, 3000);
-}
-
-// ---- Screen Management ----
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
@@ -1480,15 +2195,16 @@ function gameOver(cause) {
     document.getElementById('finalScore').textContent = finalScore.toLocaleString();
     document.getElementById('newHighScore').style.display = isNewRecord ? 'block' : 'none';
 
+    // Milestone Badges (GDD 3.5)
     const badgesEl = document.getElementById('gameOverBadges');
     badgesEl.innerHTML = '';
-    if (finalDist >= 500)  addBadge(badgesEl, '🥉 500m Runner');
-    if (finalDist >= 1000) addBadge(badgesEl, '🥈 1000m Champion');
-    if (finalDist >= 2000) addBadge(badgesEl, '🥇 2000m Legend');
-    if (finalCoins >= 50)  addBadge(badgesEl, '💰 Coin Collector');
-    if (finalCoins >= 100) addBadge(badgesEl, '🤑 Rich Cow');
+    if (finalDist >= 500)  addBadge(badgesEl, '🥉 500m Barnyard Escapist');
+    if (finalDist >= 1000) addBadge(badgesEl, '🥈 1000m Harvest Champion');
+    if (finalDist >= 2000) addBadge(badgesEl, '🥇 2000m Highway Legend');
+    if (finalCoins >= 50)  addBadge(badgesEl, '💰 Coin Hoarder');
+    if (finalCoins >= 100) addBadge(badgesEl, '👑 Rich Cow');
 
-    setTimeout(() => showScreen('gameOverScreen'), 500);
+    setTimeout(() => showScreen('gameOverScreen'), 600);
 }
 
 function addBadge(container, text) {
@@ -1503,7 +2219,6 @@ function goToMenu() {
     stopBGM();
     showScreen('mainMenu');
     updateMenuUI();
-    drawMenuBackground();
 }
 
 function updateMenuUI() {
@@ -1511,31 +2226,13 @@ function updateMenuUI() {
     document.getElementById('menuCoins').textContent = totalCoins;
 }
 
-function drawMenuBackground() {
-    const w = W(), h = H();
-    ctx.clearRect(0, 0, w, h);
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#4EC0E9');
-    grad.addColorStop(0.5, '#87CEEB');
-    grad.addColorStop(0.7, '#7CBC37');
-    grad.addColorStop(1, '#5a9a2a');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    // Clouds
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath(); ctx.arc(w*0.2, h*0.15, 30, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(w*0.25, h*0.12, 25, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(w*0.7, h*0.2, 35, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(w*0.75, h*0.17, 28, 0, Math.PI*2); ctx.fill();
-}
-
-// ---- Shop ----
+// Shop System (GDD 3.6.5)
 const shopItems = [
-    { id: 'golden', name: 'Golden Cow', icon: '✨🐄', price: 500, type: 'skin' },
-    { id: 'superhero', name: 'Super Cow', icon: '🦸🐄', price: 800, type: 'skin' },
-    { id: 'wizard', name: 'Wizard Cow', icon: '🧙🐄', price: 1200, type: 'skin' },
-    { id: 'multiplier2x', name: '2x Score', icon: '⭐×2', price: 1000, type: 'upgrade' },
-    { id: 'multiplier3x', name: '3x Score', icon: '⭐×3', price: 2500, type: 'upgrade' },
+    { id: 'golden', name: 'Golden Cow', icon: '✨🐄', price: 200, type: 'skin' },
+    { id: 'superhero', name: 'Super Cow', icon: '🦸🐄', price: 400, type: 'skin' },
+    { id: 'wizard', name: 'Wizard Cow', icon: '🧙🐄', price: 600, type: 'skin' },
+    { id: 'multiplier2x', name: '2x Score Multiplier', icon: '⭐×2', price: 500, type: 'upgrade' },
+    { id: 'multiplier3x', name: '3x Score Multiplier', icon: '⭐×3', price: 1200, type: 'upgrade' },
 ];
 
 function openShop() {
@@ -1545,38 +2242,73 @@ function openShop() {
     const grid = document.getElementById('shopGrid');
     grid.innerHTML = '';
 
-    // Default skin
+    // Classic Skin
     const defaultDiv = document.createElement('div');
     defaultDiv.className = 'shop-item' + (activeSkin === 'default' ? ' owned' : '');
-    defaultDiv.innerHTML = `<span class="shop-item-icon">🐄</span><span class="shop-item-name">Classic Moo</span><span class="shop-item-price">${activeSkin === 'default' ? '✅ Equipped' : 'Free'}</span>`;
-    defaultDiv.addEventListener('click', () => { activeSkin = 'default'; saveData(); sfxClick(); openShop(); });
+    defaultDiv.innerHTML = `
+        <span class="shop-item-icon">🐄</span>
+        <span class="shop-item-name">Classic Moo</span>
+        <span class="shop-item-price">${activeSkin === 'default' ? '✅ Equipped' : 'Equip'}</span>
+    `;
+    defaultDiv.addEventListener('click', () => {
+        activeSkin = 'default';
+        saveData();
+        sfxClick();
+        openShop();
+    });
     grid.appendChild(defaultDiv);
 
     for (let item of shopItems) {
-        const owned = ownedSkins.includes(item.id) || (item.id === 'multiplier2x' && scoreMultiplier >= 2) || (item.id === 'multiplier3x' && scoreMultiplier >= 3);
+        const owned = ownedSkins.includes(item.id) ||
+            (item.id === 'multiplier2x' && scoreMultiplier >= 2) ||
+            (item.id === 'multiplier3x' && scoreMultiplier >= 3);
+
         const div = document.createElement('div');
         div.className = 'shop-item' + (owned ? ' owned' : '');
-        div.innerHTML = `<span class="shop-item-icon">${item.icon}</span><span class="shop-item-name">${item.name}</span><span class="shop-item-price">${owned ? (item.type==='skin' ? (activeSkin===item.id?'✅ Equipped':'Owned') : '✅ Owned') : '🪙 '+item.price}</span>`;
+        div.innerHTML = `
+            <span class="shop-item-icon">${item.icon}</span>
+            <span class="shop-item-name">${item.name}</span>
+            <span class="shop-item-price">${owned ? (item.type === 'skin' ? (activeSkin === item.id ? '✅ Equipped' : 'Equip') : '✅ Owned') : '🪙 ' + item.price}</span>
+        `;
         div.addEventListener('click', () => {
-            if (owned && item.type === 'skin') { activeSkin = item.id; saveData(); openShop(); sfxClick(); }
-            else if (!owned && totalCoins >= item.price) {
+            if (owned && item.type === 'skin') {
+                activeSkin = item.id;
+                saveData();
+                openShop();
+                sfxClick();
+            } else if (!owned && totalCoins >= item.price) {
                 totalCoins -= item.price;
-                if (item.type === 'skin') { ownedSkins.push(item.id); activeSkin = item.id; }
-                else if (item.id === 'multiplier2x') scoreMultiplier = 2;
+                if (item.type === 'skin') {
+                    ownedSkins.push(item.id);
+                    activeSkin = item.id;
+                } else if (item.id === 'multiplier2x') scoreMultiplier = 2;
                 else if (item.id === 'multiplier3x') scoreMultiplier = 3;
-                saveData(); sfxPowerup(); openShop();
-            } else if (!owned) sfxCrash();
+                saveData();
+                sfxPowerup();
+                openShop();
+            } else if (!owned) {
+                sfxCrash();
+            }
         });
         grid.appendChild(div);
     }
 }
 
-// ---- Event Listeners ----
+// UI Event Listeners
+document.getElementById('mooBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    initAudio();
+    doMoo();
+});
 document.getElementById('playBtn').addEventListener('click', () => { sfxClick(); startGame(); });
 document.getElementById('shopBtn').addEventListener('click', openShop);
 document.getElementById('dailyBtn').addEventListener('click', () => {
-    sfxClick(); startGame(); gameSpeed = 10; distance = 500;
-    showKikiTip("Daily Challenge: Start at 500m! 🏃‍♂️💨");
+    sfxClick();
+    startGame();
+    gameSpeed = 12;
+    distance = 500; // Starts directly in Level 2: Harvest Fields!
+    kiki.tipText = "Daily Challenge: Harvest sprint at 500m! 🏃💨";
+    kiki.tipTimer = 180;
 });
 document.getElementById('shopBackBtn').addEventListener('click', () => { sfxClick(); goToMenu(); });
 document.getElementById('pauseBtn').addEventListener('click', pauseGame);
@@ -1590,10 +2322,11 @@ document.getElementById('soundToggle').addEventListener('change', (e) => {
     if (soundEnabled && state === 'playing') startBGM(); else stopBGM();
 });
 
-// ---- Game Loop ----
+// Main Loop
 function gameLoop(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
+
     if (state === 'playing') {
         update(dt);
         draw();
@@ -1603,9 +2336,8 @@ function gameLoop(timestamp) {
     }
 }
 
-// ---- Init ----
+// Initialize Menu
 updateMenuUI();
-drawMenuBackground();
 document.addEventListener('touchstart', initAudio, { once: true });
 document.addEventListener('click', initAudio, { once: true });
 

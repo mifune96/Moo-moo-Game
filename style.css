@@ -316,6 +316,44 @@ canvas {
     font-size: 12px;
 }
 
+/* Controls Guide & MOO Action Button */
+.controls-guide {
+    margin: 12px auto;
+    max-width: 360px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 8px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    color: #FDE047;
+    line-height: 1.4;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+}
+.hud-bottom-actions {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 100;
+    pointer-events: auto;
+}
+.moo-action-btn {
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #FFFFFF;
+    border: 3px solid #FEF08A;
+    border-radius: 50px;
+    padding: 12px 22px;
+    font-family: 'Fredoka One', sans-serif;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+.moo-action-btn:hover {
+    transform: scale(1.05);
+}
+.moo-action-btn:active {
+    transform: scale(0.95);
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 480px) {
     .title-area h1 { font-size: 42px; }
