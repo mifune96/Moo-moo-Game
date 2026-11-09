@@ -60,6 +60,20 @@ function getPerspectiveT(screenY) {
     return Math.max(0, Math.min(1, (screenY - vanishY) / (H() - vanishY)));
 }
 
+function getScaleAtY(screenY) {
+    return Math.max(0.18, getPerspectiveT(screenY));
+}
+
+function drawBubbleRect(x, y, w, h, r = 8) {
+    if (typeof ctx.roundRect === 'function') {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+    } else {
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+    }
+}
+
 function getRoadCenterX() {
     return W() / 2;
 }
@@ -586,6 +600,20 @@ function spawnRandomPowerup(lane, y) {
         collected: false,
         glow: 0,
     });
+}
+
+function spawnParticles(x, y, color, count = 5, speed = 3) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * speed * 2,
+            vy: (Math.random() - 1) * speed,
+            life: 1,
+            decay: 0.02 + Math.random() * 0.03,
+            size: 3 + Math.random() * 4,
+            color,
+        });
+    }
 }
 
 function spawnFlyingText(text, x, y, color = '#FFF') {
@@ -1632,8 +1660,7 @@ function drawFarmerJoe() {
         ctx.fillStyle = '#FFFFFF';
         ctx.strokeStyle = '#18181B';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(-80, -105, 160, 28, 8);
+        drawBubbleRect(-80, -105, 160, 28, 8);
         ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#18181B';
         ctx.font = 'bold 12px sans-serif';
@@ -1734,8 +1761,7 @@ function drawRover() {
         ctx.fillStyle = '#FFFFFF';
         ctx.strokeStyle = '#18181B';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(-45, -55, 90, 24, 6);
+        drawBubbleRect(-45, -55, 90, 24, 6);
         ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#18181B';
         ctx.font = 'bold 12px sans-serif';
@@ -1802,8 +1828,7 @@ function drawKiki() {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.strokeStyle = '#38BDF8';
         ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.roundRect(-boxW / 2, -55, boxW, boxH, 12);
+        drawBubbleRect(-boxW / 2, -55, boxW, boxH, 12);
         ctx.fill(); ctx.stroke();
 
         // Speech bubble pointer tail
