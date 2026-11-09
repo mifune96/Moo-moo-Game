@@ -1945,155 +1945,162 @@ function drawObstacle(o) {
 
     switch(o.type) {
         case 'fence': {
-            // Big Wooden Picket Fence (Jumpable) - Spans 85% of lane width!
-            const w = laneW * 0.85;
-            const h = 48 * scale;
+            // Natural 3D Wooden Farm Fence: Height is 52% of width (Never gepeng/squashed!)
+            const w = laneW * 0.84;
+            const h = w * 0.52;
 
             // Horizontal timber rails
             ctx.fillStyle = '#92400E';
-            ctx.fillRect(-w / 2, -h * 0.4, w, 8 * scale);
-            ctx.fillRect(-w / 2, h * 0.1, w, 8 * scale);
+            const railH = h * 0.16;
+            ctx.fillRect(-w / 2, -h * 0.45, w, railH);
+            ctx.fillRect(-w / 2, h * 0.12, w, railH);
 
             // Vertical pointed pickets (5 pickets across lane)
             const pickets = 5;
+            const pw = w * 0.13;
             for (let i = 0; i < pickets; i++) {
-                const px = -w / 2 + (w / (pickets - 1)) * i;
-                const pw = 10 * scale;
+                const px = -w / 2 + pw / 2 + (w - pw) / (pickets - 1) * i;
                 ctx.fillStyle = '#B45309';
-                ctx.fillRect(px - pw / 2, -h * 0.7, pw, h);
+                ctx.fillRect(px - pw / 2, -h * 0.75, pw, h * 1.1);
                 // Pointed top
                 ctx.beginPath();
-                ctx.moveTo(px - pw / 2, -h * 0.7);
-                ctx.lineTo(px, -h * 0.95);
-                ctx.lineTo(px + pw / 2, -h * 0.7);
+                ctx.moveTo(px - pw / 2, -h * 0.75);
+                ctx.lineTo(px, -h * 1.0);
+                ctx.lineTo(px + pw / 2, -h * 0.75);
                 ctx.fill();
             }
 
             // "JUMP ⬆️" badge on fence
-            if (scale > 0.45) {
+            if (scale > 0.35) {
                 ctx.fillStyle = '#FEF08A';
-                ctx.font = `bold ${Math.floor(11 * scale * 2)}px sans-serif`;
+                ctx.font = `bold ${Math.max(12, Math.floor(h * 0.28))}px sans-serif`;
                 ctx.textAlign = 'center';
-                ctx.fillText('JUMP ⬆️', 0, -h * 0.85);
+                ctx.fillText('JUMP ⬆️', 0, -h * 1.08);
             }
             break;
         }
 
         case 'haybale': {
-            // Large Golden Hay Bale Roll (Jumpable) - 78% of lane
-            const r = laneW * 0.38;
+            // Large Golden Hay Bale Roll (Jumpable) - Perfect circle
+            const r = (laneW * 0.76) / 2;
             ctx.fillStyle = '#EAB308';
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#CA8A04'; ctx.lineWidth = 3 * scale;
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, -r * 0.2, r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#CA8A04'; ctx.lineWidth = Math.max(2, r * 0.08);
+            ctx.beginPath(); ctx.arc(0, -r * 0.2, r, 0, Math.PI * 2); ctx.stroke();
 
             // Inner twine rings
-            ctx.strokeStyle = '#78350F'; ctx.lineWidth = 2 * scale;
-            ctx.beginPath(); ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = '#78350F'; ctx.lineWidth = Math.max(1.5, r * 0.05);
+            ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.65, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.35, 0, Math.PI * 2); ctx.stroke();
 
             // Straw strands
-            for (let i = -r * 0.7; i < r * 0.7; i += 8 * scale) {
-                ctx.beginPath(); ctx.moveTo(i, -r * 0.8); ctx.lineTo(i, r * 0.8); ctx.stroke();
+            for (let i = -r * 0.7; i < r * 0.7; i += r * 0.2) {
+                ctx.beginPath(); ctx.moveTo(i, -r * 0.2 - r * 0.75); ctx.lineTo(i, -r * 0.2 + r * 0.75); ctx.stroke();
             }
             break;
         }
 
         case 'barrier': {
-            // Farm Low Clearance Gantry: MUST SLIDE UNDER! - 92% of lane
-            const w = laneW * 0.92;
-            const h = 75 * scale;
+            // Farm Low Clearance Gantry: MUST SLIDE UNDER!
+            const w = laneW * 0.90;
+            const h = w * 0.88; // Tall clearance archway!
 
+            const postW = w * 0.12;
             // Two tall wooden side posts
             ctx.fillStyle = '#78350F';
-            ctx.fillRect(-w / 2, -h, 12 * scale, h + 15 * scale);
-            ctx.fillRect(w / 2 - 12 * scale, -h, 12 * scale, h + 15 * scale);
+            ctx.fillRect(-w / 2, -h, postW, h + 10);
+            ctx.fillRect(w / 2 - postW, -h, postW, h + 10);
 
             // Overhead clearance crossbeam
+            const beamH = h * 0.28;
             ctx.fillStyle = '#991B1B';
-            ctx.fillRect(-w / 2, -h, w, 22 * scale);
+            ctx.fillRect(-w / 2, -h, w, beamH);
 
             // Red & White warning caution stripes
             ctx.fillStyle = '#FFFFFF';
             const stripes = 6;
             for (let i = 0; i < stripes; i++) {
-                ctx.fillRect(-w / 2 + (w / stripes) * i + 4, -h + 2, (w / stripes) * 0.45, 18 * scale);
+                ctx.fillRect(-w / 2 + (w / stripes) * i + 4, -h + 2, (w / stripes) * 0.45, beamH - 4);
             }
 
             // Big "SLIDE ⬇️" clearance text
-            if (scale > 0.45) {
+            if (scale > 0.35) {
                 ctx.fillStyle = '#FFFFFF';
-                ctx.font = `bold ${Math.floor(12 * scale * 2)}px sans-serif`;
+                ctx.font = `bold ${Math.max(12, Math.floor(beamH * 0.55))}px sans-serif`;
                 ctx.textAlign = 'center';
-                ctx.fillText('SLIDE ⬇️', 0, -h + 15 * scale);
+                ctx.fillText('SLIDE ⬇️', 0, -h + beamH * 0.68);
             }
             break;
         }
 
         case 'tractor': {
-            // Big Bold Red Farm Tractor (Cannot jump, MUST DODGE!) - 85% of lane
-            const w = laneW * 0.85;
-            const h = 60 * scale;
+            // Big Bold Red Farm Tractor
+            const w = laneW * 0.84;
+            const h = w * 0.78; // Tall, hefty tractor!
 
             // Massive Black Rear Mud Tires with deep treads
+            const tireR = w * 0.20;
             ctx.fillStyle = '#18181B';
-            ctx.beginPath(); ctx.arc(-w * 0.38, h * 0.2, 22 * scale, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(w * 0.38, h * 0.2, 22 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-w * 0.36, -tireR * 0.2, tireR, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.36, -tireR * 0.2, tireR, 0, Math.PI * 2); ctx.fill();
             // Yellow hubcaps
             ctx.fillStyle = '#FDE047';
-            ctx.beginPath(); ctx.arc(-w * 0.38, h * 0.2, 8 * scale, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(w * 0.38, h * 0.2, 8 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-w * 0.36, -tireR * 0.2, tireR * 0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.36, -tireR * 0.2, tireR * 0.4, 0, Math.PI * 2); ctx.fill();
 
             // Main Red Tractor Body
             ctx.fillStyle = COLORS.barnRed;
-            ctx.fillRect(-w * 0.42, -h * 0.4, w * 0.84, h * 0.65);
+            ctx.fillRect(-w * 0.42, -h * 0.55, w * 0.84, h * 0.55);
 
             // Cab & Windshield
             ctx.fillStyle = '#991B1B';
-            ctx.fillRect(-w * 0.25, -h * 0.9, w * 0.5, h * 0.55);
+            ctx.fillRect(-w * 0.28, -h * 0.95, w * 0.56, h * 0.45);
             ctx.fillStyle = '#7DD3FC'; // Bright blue glass
-            ctx.fillRect(-w * 0.2, -h * 0.85, w * 0.4, h * 0.35);
+            ctx.fillRect(-w * 0.24, -h * 0.90, w * 0.48, h * 0.30);
 
             // Front Yellow Headlights
             ctx.fillStyle = '#FEF08A';
-            ctx.beginPath(); ctx.arc(-w * 0.28, -h * 0.1, 7 * scale, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(w * 0.28, -h * 0.1, 7 * scale, 0, Math.PI * 2); ctx.fill();
+            const headR = w * 0.07;
+            ctx.beginPath(); ctx.arc(-w * 0.28, -h * 0.22, headR, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.28, -h * 0.22, headR, 0, Math.PI * 2); ctx.fill();
 
             // Vertical Exhaust Pipe puffing smoke
             ctx.fillStyle = '#475569';
-            ctx.fillRect(w * 0.18, -h * 1.15, 6 * scale, h * 0.4);
+            const pipeW = Math.max(3, w * 0.05);
+            ctx.fillRect(w * 0.18, -h * 1.25, pipeW, h * 0.38);
             // Smoke puff
-            ctx.fillStyle = 'rgba(203, 213, 225, 0.6)';
-            ctx.beginPath(); ctx.arc(w * 0.2 + Math.sin(frameCount*0.2)*4, -h * 1.25, 8 * scale, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = 'rgba(203, 213, 225, 0.65)';
+            ctx.beginPath(); ctx.arc(w * 0.2 + Math.sin(frameCount*0.2)*4, -h * 1.35, w * 0.08, 0, Math.PI*2); ctx.fill();
             break;
         }
 
         case 'truck': {
-            // Big Blue Highway Delivery Truck - 85% of lane
+            // Big Blue Highway Delivery Truck
             const w = laneW * 0.85;
-            const h = 70 * scale;
+            const h = w * 0.82;
 
             ctx.fillStyle = '#1D4ED8';
-            ctx.fillRect(-w / 2, -h * 0.7, w, h);
+            ctx.fillRect(-w / 2, -h * 0.8, w, h * 0.85);
             ctx.fillStyle = '#60A5FA';
-            ctx.fillRect(-w * 0.4, -h * 0.6, w * 0.8, h * 0.35);
+            ctx.fillRect(-w * 0.4, -h * 0.72, w * 0.8, h * 0.35);
             ctx.fillStyle = '#FEF08A';
-            ctx.fillRect(-w * 0.4, h * 0.15, 12 * scale, 8 * scale);
-            ctx.fillRect(w * 0.4 - 12 * scale, h * 0.15, 12 * scale, 8 * scale);
+            ctx.fillRect(-w * 0.4, -h * 0.1, w * 0.18, h * 0.12);
+            ctx.fillRect(w * 0.4 - w * 0.18, -h * 0.1, w * 0.18, h * 0.12);
             break;
         }
 
         case 'mud': {
-            // Mud Puddle (Stumble Trap) - 80% of lane
-            const w = laneW * 0.8;
-            ctx.fillStyle = 'rgba(107, 66, 38, 0.82)';
+            // Mud Puddle (Stumble Trap)
+            const w = laneW * 0.82;
+            const h = w * 0.32; // Natural ground perspective ellipse
+            ctx.fillStyle = 'rgba(107, 66, 38, 0.85)';
             ctx.beginPath();
-            ctx.ellipse(0, 0, w / 2, 14 * scale, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
             ctx.fill();
             // Mud bubbles & splashes
-            ctx.fillStyle = 'rgba(67, 40, 20, 0.6)';
-            ctx.beginPath(); ctx.arc(-w * 0.2, -3 * scale, 5 * scale, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(w * 0.25, 2 * scale, 4 * scale, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(67, 40, 20, 0.7)';
+            ctx.beginPath(); ctx.arc(-w * 0.2, -h * 0.1, w * 0.08, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.25, h * 0.1, w * 0.06, 0, Math.PI * 2); ctx.fill();
             break;
         }
     }
