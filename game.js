@@ -826,8 +826,8 @@ function update(dt) {
             const dx = player.x - cx;
             const dy = (player.y + player.jumpY) - c.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < 260) {
-                c.y += dy * 0.18;
+            if (dist < 340) {
+                c.y += dy * 0.22;
                 // Move towards player lane
                 if (Math.abs(dx) > 10) c.lane = player.lane;
             }
@@ -867,24 +867,26 @@ function update(dt) {
     for (let c of coins) {
         if (c.collected) continue;
         const cx = getLaneXAtY(c.lane, c.y);
+        const scale = getScaleAtY(c.y);
+        const coinVisualY = c.y - (c.airborne ? 65 * scale : 0);
         const playerActualY = player.y + player.jumpY;
 
         // X proximity: player must be in the same lane
         const xDist = Math.abs(player.x - cx);
-        const yDist = Math.abs(playerActualY - c.y);
+        const yDist = Math.abs(playerActualY - coinVisualY);
 
         // If coin is airborne, player needs to be jumping near its height
         let heightMatch = true;
-        if (c.airborne && !player.jumping) {
+        if (c.airborne && (!player.jumping || player.jumpY > -15)) {
             heightMatch = false;
         }
 
-        if (xDist < 45 && yDist < 40 && heightMatch) {
+        if (xDist < 60 && yDist < 55 && heightMatch) {
             c.collected = true;
             coinsCollected++;
             sfxCoin();
-            spawnParticles(cx, c.y, COLORS.strawYellow, 5, 2.5);
-            spawnFlyingText("+1 🪙", cx, c.y - 10, COLORS.strawYellow);
+            spawnParticles(cx, coinVisualY, COLORS.strawYellow, 6, 3);
+            spawnFlyingText("+1 🪙", cx, coinVisualY - 15, COLORS.strawYellow);
         }
     }
 
@@ -2527,39 +2529,106 @@ function drawObstacle(o) {
     ctx.restore();
 }
 
-// 6. COINS (Large, Radiant, Glowing)
+// 6. COINS (Milk Cents - Big, Radiant, 3D Rotating Golden Medallion)
 function drawCoin(c) {
     const scale = getScaleAtY(c.y);
+    const laneW = getLaneWidthAtY(c.y);
     const x = getLaneXAtY(c.lane, c.y);
-    const y = c.y - (c.airborne ? 35 * scale : 0);
-    const radius = 18 * Math.max(0.4, scale);
-    const glow = Math.sin(c.sparkle) * 0.3 + 0.7;
+    const airborneOffset = c.airborne ? 65 * scale : 0;
+    const y = c.y - airborneOffset;
+
+    // Proportional coin radius: min 16px at far horizon, up to ~38px at Moo Moo's lane
+    const radius = Math.max(16, Math.min(38, laneW * 0.15));
+
+    // 3D vertical spin effect (Subway Surfers / Crossy Road style)
+    const spin = c.sparkle * 2.2;
+    const cosSpin = Math.cos(spin);
+    const isFront = cosSpin >= 0;
+    const spinWidthFactor = Math.max(0.38, Math.abs(cosSpin)); // keep at least 38% width for readability
+    const coinW = radius * spinWidthFactor;
+    const coinH = radius;
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.globalAlpha = glow;
 
-    // Golden Halo
-    ctx.fillStyle = 'rgba(253, 224, 71, 0.35)';
-    ctx.beginPath(); ctx.arc(0, 0, radius + 6 * scale, 0, Math.PI * 2); ctx.fill();
+    // 1. Soft 3D Ground Shadow on Road
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
+    ctx.beginPath();
+    ctx.ellipse(0, airborneOffset + coinH * 0.65, radius * 0.9, radius * 0.26, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Coin Disc
-    ctx.fillStyle = COLORS.strawYellow;
-    ctx.strokeStyle = COLORS.cowbellGold;
-    ctx.lineWidth = 2.5 * scale;
-    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // 2. Radiant Outer Golden Glow Halo (High visibility against dark asphalt/dirt)
+    const haloGlow = 0.35 + Math.sin(c.sparkle * 3) * 0.15;
+    ctx.fillStyle = `rgba(253, 224, 71, ${haloGlow})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 1.35, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Inner Ring
-    ctx.strokeStyle = '#D97706';
-    ctx.lineWidth = 1.5 * scale;
-    ctx.beginPath(); ctx.arc(0, 0, radius * 0.68, 0, Math.PI * 2); ctx.stroke();
+    // 3. 3D Metal Edge / Rim Extrusion (Gives solid thickness when rotating)
+    const edgeOffset = (isFront ? 1 : -1) * Math.max(2, radius * 0.1);
+    ctx.fillStyle = '#92400E'; // deep bronze amber edge
+    ctx.beginPath();
+    ctx.ellipse(edgeOffset, 0, coinW, coinH, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Cow Face / Milk Cent Logo
-    if (scale > 0.4) {
-        ctx.fillStyle = '#92400E';
-        ctx.font = `bold ${Math.floor(13 * scale * 1.5)}px sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // 4. Main Coin Face (Polished Golden Gradient)
+    const coinGrad = ctx.createLinearGradient(-coinW, -coinH, coinW, coinH);
+    coinGrad.addColorStop(0, '#FEF08A'); // bright sunlit rim
+    coinGrad.addColorStop(0.35, '#FACC15'); // vibrant arcade gold
+    coinGrad.addColorStop(0.75, '#EAB308'); // warm gold
+    coinGrad.addColorStop(1, '#CA8A04');   // deep shadow gold
+
+    ctx.fillStyle = coinGrad;
+    ctx.strokeStyle = '#78350F';
+    ctx.lineWidth = Math.max(2.2, radius * 0.08);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, coinW, coinH, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 5. Engraved Inner Bevel Ring
+    ctx.strokeStyle = '#FDE047';
+    ctx.lineWidth = Math.max(1.5, radius * 0.05);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, coinW * 0.76, coinH * 0.76, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 6. Milk Cent Embossed Logo ('¢' symbol)
+    if (radius >= 14) {
+        const fontSize = Math.floor(radius * 1.05);
+        ctx.font = `900 ${fontSize}px "Fredoka One", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Drop shadow for stamped relief look
+        ctx.fillStyle = '#78350F';
+        ctx.fillText('¢', 0.5, 1);
+
+        // Highlight text
+        ctx.fillStyle = '#FFFFFF';
         ctx.fillText('¢', 0, 0);
+    }
+
+    // 7. Twinkling Specular Glint (Twinkles on the rim)
+    const sparkleCycle = (c.sparkle * 1.5) % (Math.PI * 2);
+    if (sparkleCycle < 1.2) {
+        const glintAlpha = Math.sin((sparkleCycle / 1.2) * Math.PI);
+        const glintX = -coinW * 0.6;
+        const glintY = -coinH * 0.6;
+        const glintSize = radius * 0.35;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${glintAlpha})`;
+        ctx.beginPath();
+        ctx.moveTo(glintX, glintY - glintSize);
+        ctx.lineTo(glintX + glintSize * 0.25, glintY);
+        ctx.lineTo(glintX + glintSize, glintY);
+        ctx.lineTo(glintX + glintSize * 0.25, glintY + glintSize * 0.25);
+        ctx.lineTo(glintX, glintY + glintSize);
+        ctx.lineTo(glintX - glintSize * 0.25, glintY + glintSize * 0.25);
+        ctx.lineTo(glintX - glintSize, glintY);
+        ctx.lineTo(glintX - glintSize * 0.25, glintY);
+        ctx.closePath();
+        ctx.fill();
     }
 
     ctx.restore();
@@ -2568,26 +2637,48 @@ function drawCoin(c) {
 // 7. POWER-UPS (Turbo Milk, Coin Magnet, Milk Shield)
 function drawPowerup(p) {
     const scale = getScaleAtY(p.y);
+    const laneW = getLaneWidthAtY(p.y);
     const x = getLaneXAtY(p.lane, p.y);
     const y = p.y;
-    const r = 26 * Math.max(0.4, scale);
+    const r = Math.max(18, Math.min(42, laneW * 0.16));
 
     ctx.save();
     ctx.translate(x, y);
 
-    const glowColor = p.type === 'turbo' ? COLORS.skyBlue : p.type === 'magnet' ? COLORS.cowbellGold : '#FFFFFF';
-    ctx.strokeStyle = glowColor;
-    ctx.lineWidth = 3 * scale;
-    ctx.beginPath(); ctx.arc(0, 0, r + Math.sin(p.glow) * 4 * scale, 0, Math.PI * 2); ctx.stroke();
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.75, r * 0.85, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Background circle
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    const glowColor = p.type === 'turbo' ? '#38BDF8' : p.type === 'magnet' ? '#FACC15' : '#4ADE80';
+
+    // Outer Pulsing Glow Aura
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = Math.max(3, r * 0.12);
+    ctx.beginPath();
+    ctx.arc(0, 0, r + Math.sin(p.glow * 3) * 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Background circle (Glossy pearl white disc)
+    const discGrad = ctx.createLinearGradient(0, -r, 0, r);
+    discGrad.addColorStop(0, '#FFFFFF');
+    discGrad.addColorStop(1, '#E2E8F0');
+    ctx.fillStyle = discGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer colored badge border
+    ctx.strokeStyle = glowColor;
+    ctx.lineWidth = Math.max(2.5, r * 0.08);
+    ctx.stroke();
 
     // Large Emoji Icon
-    ctx.font = `${Math.floor(22 * Math.max(0.45, scale))}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(p.type === 'turbo' ? '🥛' : p.type === 'magnet' ? '🧲' : '🛡️', 0, 0);
+    ctx.font = `${Math.floor(r * 1.15)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.type === 'turbo' ? '🥛' : p.type === 'magnet' ? '🧲' : '🛡️', 0, 1);
 
     ctx.restore();
 }
