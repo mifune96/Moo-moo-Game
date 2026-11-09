@@ -2337,21 +2337,84 @@ function drawObstacle(o) {
         }
 
         case 'haybale': {
-            // Large Golden Hay Bale Roll (Jumpable) - Perfect circle
-            const r = (laneW * 0.76) / 2;
-            ctx.fillStyle = '#EAB308';
-            ctx.beginPath(); ctx.arc(0, -r * 0.2, r, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#CA8A04'; ctx.lineWidth = Math.max(2, r * 0.08);
-            ctx.beginPath(); ctx.arc(0, -r * 0.2, r, 0, Math.PI * 2); ctx.stroke();
+            // Authentic 3D Farm Hay Bale Roll (Gulungan Jerami Padi - Jumpable)
+            const w = laneW * 0.82;
+            const h = w * 0.58;
 
-            // Inner twine rings
-            ctx.strokeStyle = '#78350F'; ctx.lineWidth = Math.max(1.5, r * 0.05);
-            ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.65, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.35, 0, Math.PI * 2); ctx.stroke();
+            // Ground shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+            ctx.beginPath();
+            ctx.ellipse(0, h * 0.38, w * 0.48, h * 0.20, 0, 0, Math.PI * 2);
+            ctx.fill();
 
-            // Straw strands
-            for (let i = -r * 0.7; i < r * 0.7; i += r * 0.2) {
-                ctx.beginPath(); ctx.moveTo(i, -r * 0.2 - r * 0.75); ctx.lineTo(i, -r * 0.2 + r * 0.75); ctx.stroke();
+            // 1. Cylindrical Hay Body (Golden Amber Straw Gradient)
+            const bodyGrad = ctx.createLinearGradient(0, -h * 0.75, 0, h * 0.35);
+            bodyGrad.addColorStop(0, '#FEF08A'); // bright straw highlight on top
+            bodyGrad.addColorStop(0.3, '#EAB308'); // rich golden straw
+            bodyGrad.addColorStop(0.8, '#CA8A04'); // deep amber
+            bodyGrad.addColorStop(1, '#854D0E');   // shadow base
+
+            ctx.fillStyle = bodyGrad;
+            ctx.strokeStyle = '#713F12';
+            ctx.lineWidth = Math.max(2, w * 0.022);
+
+            // Rounded 3D Hay Bale shape
+            drawBubbleRect(-w / 2, -h * 0.7, w, h, Math.floor(h * 0.32));
+            ctx.fill(); ctx.stroke();
+
+            // 2. Straw Texture Lines (Horizontal bundled fibers)
+            ctx.strokeStyle = '#A16207';
+            ctx.lineWidth = Math.max(1.5, w * 0.012);
+            for (let i = -h * 0.5; i < h * 0.2; i += h * 0.14) {
+                ctx.beginPath();
+                ctx.moveTo(-w * 0.44, i + Math.sin(i * 10) * 2);
+                ctx.lineTo(w * 0.44, i + Math.cos(i * 10) * 2);
+                ctx.stroke();
+            }
+
+            // 3. Two Black/Brown Twine Binder Ropes (Tali Pengikat Jerami)
+            ctx.strokeStyle = '#291807';
+            ctx.lineWidth = Math.max(2.5, w * 0.025);
+            // Left binding rope
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.22, -h * 0.7);
+            ctx.lineTo(-w * 0.22, h * 0.3);
+            ctx.stroke();
+            // Right binding rope
+            ctx.beginPath();
+            ctx.moveTo(w * 0.22, -h * 0.7);
+            ctx.lineTo(w * 0.22, h * 0.3);
+            ctx.stroke();
+
+            // Knots on twine
+            ctx.fillStyle = '#1C0F04';
+            ctx.beginPath(); ctx.arc(-w * 0.22, -h * 0.2, Math.max(2, w * 0.02), 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(w * 0.22, -h * 0.2, Math.max(2, w * 0.02), 0, Math.PI*2); ctx.fill();
+
+            // 4. Loose Straw Wisps (Grass strands poking out)
+            ctx.strokeStyle = '#FDE047';
+            ctx.lineWidth = Math.max(1.5, w * 0.014);
+            // Top wisps
+            for (let xPos = -w * 0.35; xPos <= w * 0.35; xPos += w * 0.14) {
+                ctx.beginPath();
+                ctx.moveTo(xPos, -h * 0.7);
+                ctx.lineTo(xPos + (Math.sin(xPos) * 8), -h * 0.7 - Math.max(5, h * 0.14));
+                ctx.stroke();
+            }
+            // Side wisps
+            ctx.beginPath();
+            ctx.moveTo(-w / 2, -h * 0.1); ctx.lineTo(-w / 2 - 8, -h * 0.15);
+            ctx.moveTo(-w / 2, 0); ctx.lineTo(-w / 2 - 6, 4);
+            ctx.moveTo(w / 2, -h * 0.1); ctx.lineTo(w / 2 + 8, -h * 0.15);
+            ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2 + 6, 4);
+            ctx.stroke();
+
+            // 5. Floating Label: "JUMP ⬆️ HAY BALE 🌾"
+            if (scale > 0.32) {
+                ctx.fillStyle = '#FEF08A';
+                ctx.font = `bold ${Math.max(11, Math.floor(h * 0.26))}px "Fredoka One", sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.fillText('🌾 HAY BALE (JUMP ⬆️)', 0, -h * 0.88);
             }
             break;
         }
